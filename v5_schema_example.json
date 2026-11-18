@@ -1,0 +1,138 @@
+{
+  "schema_version": 2,
+  "job_id": "SCHEMA_EXAMPLE_ONLY_NOT_APPROVED",
+  "matchup_idea_id": "hong-robin-target-20261116",
+  "planning": {
+    "idea_id": "hong-robin-target-20261116",
+    "conditions": {
+      "a": "분신이 사방으로 흩어져 본체를 식별해야 하는 상황",
+      "b": "분신으로 흩어지기 전 문을 나서며 본체가 드러나는 순간",
+      "comparison_axis": "본체가 드러난 짧은 틈과 분신이 흩어진 뒤의 식별 난도",
+      "fictional": true
+    }
+  },
+  "fictional_matchup": true,
+  "hook": "검끝이 빗나간 순간, 누가 먼저 돌아설까요?",
+  "thumb": "thumb.png",
+  "winner": "none",
+  "reason": "분신이 갈라지는 순간, 로빈의 화살도 날아갑니다.",
+  "question": "홍길동은 빠져나갈까요, 로빈이 막아낼까요?",
+  "title": "홍길동 vs 로빈 후드 - 분신으로 도망치면 활로 막을 수 있을까",
+  "pinned_comment": "분신이 흩어진 뒤에는 진짜를 골라야 하고, 본체가 드러난 순간에는 기습에 반격한 궁수의 대응이 변수입니다. 마지막 화살은 진짜 홍길동을 맞힐까요, 분신에 속을까요? 이 만남과 추격은 가상 설정입니다.",
+  "bgm": "",
+  "a": {
+    "id": "novel:hong_gil_dong",
+    "canonical_id": "novel:hong_gil_dong",
+    "name": "홍길동",
+    "version": "홍길동전 30장 경판본, 위키문헌 원문 전사",
+    "tag": "신출귀몰한 의적",
+    "image": "a.png",
+    "intro_images": [
+      "a.png",
+      "a_2.png"
+    ],
+    "edge": {
+      "title": "분신으로 흩어진 뒤",
+      "image": "a_atk.png",
+      "condition": "분신이 사방으로 흩어져 본체를 식별해야 하는 상황",
+      "lines": [
+        "검을 옆으로 걷어내자,",
+        "상대의 칼끝이 오른쪽으로 빗나갑니다."
+      ]
+    },
+    "intro": [
+      "소설 속 의적 홍길동은",
+      "분신을 보내 팔도를 동시에 뒤흔들었죠."
+    ],
+    "featured_feat": {
+      "summary": "분신을 보내 팔도에서 동시에 활약",
+      "challenge": "한 몸으로 여러 지역에 나타나기 어려운 상황",
+      "outcome": "팔도에서 같은 시각에 발생한 도적 사건의 보고가 올라오고 조정이 동요함",
+      "relevance": "여러 홍길동을 구별하기 어려운 분신술이 추격의 표적 식별을 흔든다.",
+      "selection_reason": "막연한 도술 소개 대신 분신술의 범위와 효과를 보여 주는 활약을 선택. 역대 최고라고 단정하지 않음.",
+      "source": {
+        "url": "https://ko.wikisource.org/wiki/홍길동전_(30장_경판본)",
+        "locator": "분신 일곱과 팔도 동시 보고 대목, 전사 335~340행"
+      },
+      "version": "홍길동전 30장 경판본, 위키문헌 원문 전사"
+    }
+  },
+  "b": {
+    "id": "legend:robin_hood",
+    "canonical_id": "legend:robin_hood",
+    "name": "로빈 후드",
+    "version": "The Merry Adventures of Robin Hood, Howard Pyle 1883, Gutenberg #964",
+    "tag": "셔우드 숲의 명궁",
+    "image": "b.png",
+    "intro_images": [
+      "b.png",
+      "b_2.png"
+    ],
+    "edge": {
+      "title": "모습이 드러나는 순간",
+      "image": "b_atk.png",
+      "condition": "분신으로 흩어지기 전 문을 나서며 본체가 드러나는 순간",
+      "lines": [
+        "그 칼날을 따라 몸을 돌리며,",
+        "비어 있는 왼쪽으로 검을 내밀죠."
+      ]
+    },
+    "intro": [
+      "소설 속 활의 달인 로빈 후드는",
+      "기습한 적에게 곧바로 화살을 날려 쓰러뜨렸습니다."
+    ],
+    "featured_feat": {
+      "summary": "숲의 기습 직후 활로 반격",
+      "challenge": "뒤에서 화살을 쏘는 숲지기의 기습",
+      "outcome": "첫 화살은 숲지기가 취한 탓에 빗나가고 로빈이 즉시 돌아서 쏜 화살로 상대를 쓰러뜨림",
+      "relevance": "고정 과녁의 정확도 대신 위협 상황에서 즉시 활로 대응한 기록을 보여 준다.",
+      "selection_reason": "기스본과의 결투는 검 중심이라 이번 활 대결에는 첫 기습 반격이 더 직접적이다. 평생 최고의 전투라고 주장하지 않음.",
+      "source": {
+        "url": "https://www.gutenberg.org/files/964/964-h/964-h.htm",
+        "locator": "Prologue: How Robin Hood Came to Be an Outlaw, forester ambush, 81~85행"
+      },
+      "version": "The Merry Adventures of Robin Hood, Howard Pyle 1883, Gutenberg #964"
+    }
+  },
+  "fictional_premise": "곡식을 챙겨 창고를 빠져나오는 홍길동을 길목의 로빈 후드가 저지하려 한다. 두 인물의 만남과 역할은 제작자가 만든 가상 상황이다.",
+  "cta_presentation": "comment_spoken",
+  "production_profile": "showdown_detail_v5",
+  "setup": {
+    "title": "곳간 탈출과 길목 봉쇄",
+    "image": "scene.png",
+    "lines": [
+      "그런 홍길동이 곡식 자루를 메고 달아나는 길목을,",
+      "로빈 후드가 막아선다면 어떨까요?"
+    ]
+  },
+  "cliffhanger": {
+    "image": "cliffhanger.png",
+    "participants": [
+      "a",
+      "b"
+    ],
+    "winner_revealed": false,
+    "moment": "홍길동의 분신들이 갈라지는 동시에 로빈이 화살을 놓는 순간",
+    "unresolved_action": "그 화살이 진짜 홍길동을 맞힐지 분신에 속을지 보여 주지 않는다."
+  },
+  "example_notice": "형식 검사용 허구 예시다. 기존 v4 예시의 인물/출처 메타데이터에 테스트용 검술 대사를 조합한 fixture이므로 실제 홍길동·로빈 후드의 능력, 원전 사건이나 이 대진의 내용 근거로 사용하지 않는다. 14 cue·자산·묶음 연결을 설명하기 위한 것이며 원전·전제·전체 대본·이미지·TTS·영상 제작 승인이 아니다. 실제 편은 원전을 조사하고 모든 관련 메타데이터를 새 대본과 함께 작성해 승인받아야 한다.",
+  "opening_epithets": {
+    "a": {
+      "text": "신출귀몰한 의적",
+      "kind": "editorial_descriptor",
+      "basis": "홍길동전 30장 경판본의 의적 활동, 분신과 팔도 동시 출현으로 신출귀몰함을 요약. 원문의 고정 별명이라는 뜻은 아님."
+    },
+    "b": {
+      "text": "셔우드 숲의 명궁",
+      "kind": "editorial_descriptor",
+      "basis": "Pyle 1883 Prologue의 master archer 소개와 Sherwood Forest 활동을 결합한 설명형 수식어. 공식 칭호라고 주장하지 않음."
+    }
+  },
+  "publication_status": "SYNTHETIC_SCHEMA_FIXTURE_NOT_PRODUCTION_APPROVED",
+  "example_origin": {
+    "file": "tests/test_detail_profile.py",
+    "function": "detail_fixture",
+    "source_sha256": "c44ba3f85d87ccbe10b8488362622aeda0351363d473e468f49fccf6ca793a0c",
+    "media_generation_performed": false
+  }
+}

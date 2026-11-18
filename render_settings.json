@@ -1,0 +1,20 @@
+{
+  "schema_version": 2,
+  "safe_margins": {"left": 72, "right": 132, "top": 96, "bottom": 220},
+  "art_top": 300,
+  "art_bottom": 1520,
+  "caption_top": 1555,
+  "caption_bottom": 1700,
+  "zoom_amount": 0,
+  "shake_pixels": 0,
+  "image_transition": "crossfade",
+  "image_transition_ms": 200,
+  "attack_reaction_transition": "cut",
+  "subtitle_size": 61,
+  "subtitle_min_size": 47,
+  "header_size": 70,
+  "border_width": 14,
+  "crf": 20,
+  "preset": "fast",
+  "bgm_volume": 0.1
+}

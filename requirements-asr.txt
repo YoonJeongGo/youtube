@@ -1,0 +1,5 @@
+# Optional offline analysis; install in .asr-venv, never the production TTS venv.
+faster-whisper==1.2.1
+ctranslate2==4.9.0
+av==19.0.2
+onnxruntime==1.32.0
