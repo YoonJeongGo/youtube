@@ -1,0 +1,10 @@
+{
+  "recorded_at": "2026-11-16T14:12:17.267298+00:00",
+  "user_request": "이것도 저장해. 이름이 짤림. 앞으로 이름같은거 어디에 둘 지도 저장",
+  "image_file": "docs\\evidence\\2026-11-16-thumbnail-name-clipping.png",
+  "sha256": "d881ffa0bab1ed71214ab695781c5720677367a548d44fd22c9bfb5adaca24b0",
+  "observed": "첨부 목록에서 척준경 이름의 위쪽, 미야모토 무사시 및 홍길동 이름의 오른쪽 일부가 카드 경계에 잘린다.",
+  "cause": "미확정. 실제 선택 프레임 및 서비스 크롭 설정 확인 없음.",
+  "scope": "앞으로 적용할 이름·VS 배치와 목록 검수 규칙 저장. 기존 영상/업로드 변경 없음.",
+  "coordinate_basis": "Codex implementation guideline, not user-specified numeric standard or platform guarantee"
+}

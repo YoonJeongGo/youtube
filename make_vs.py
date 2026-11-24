@@ -6,6 +6,7 @@ listening approval. Review stills are decoded from the encoded MP4.
 from __future__ import annotations
 
 import argparse
+from collections import OrderedDict
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from fractions import Fraction
@@ -19,9 +20,10 @@ import subprocess
 import sys
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps
+from longform_visuals import VisualShotPlan, timeline_picture_shots
 
 from episode_core import (DETAIL_PROFILE, atomic_json, duration_limits, load_json, object_hash, safe_child,
-                          script_hash, sha256_file, speech_segments)
+                          script_hash, sha256_file, speech_segments, is_longform, video_spec, image_names)
 
 W, H, FPS = 1080, 1920, 30
 COL_A, COL_B = (255, 107, 53), (72, 192, 255)
@@ -63,15 +65,39 @@ def font(size):
     raise RuntimeError("한글 글꼴을 찾지 못했어요. FONT_CANDIDATES에 실제 글꼴을 지정하세요.")
 
 
-def settings_for(path=SETTINGS_PATH):
-    settings = dict(DEFAULT_SETTINGS)
+LONGFORM_SETTINGS = {
+    **DEFAULT_SETTINGS,
+    "format": "longform",
+    "safe_margins": {"left": 96, "right": 96, "top": 36, "bottom": 64},
+    "art_top": 0, "art_bottom": 1080,
+    "caption_top": 856, "caption_bottom": 1016,
+    "subtitle_size": 56, "subtitle_min_size": 42, "header_size": 48,
+    "border_width": 8,
+}
+
+
+def settings_for(path=SETTINGS_PATH, cfg=None):
+    if isinstance(path, dict):
+        cfg, path = path, SETTINGS_PATH
+    longform = is_longform(cfg or {})
+    spec = video_spec(cfg or {})
+    width, height = spec['width'], spec['height']
+    settings = dict(LONGFORM_SETTINGS if longform else DEFAULT_SETTINGS)
     if Path(path).exists():
-        settings.update(load_json(path))
+        supplied = load_json(path)
+        if longform:
+            # Keep portrait coordinates out of the horizontal render branch.
+            shared = ('crf', 'preset', 'bgm_volume', 'zoom_amount', 'shake_pixels',
+                      'image_transition', 'image_transition_ms', 'attack_reaction_transition')
+            settings.update({key: supplied[key] for key in shared if key in supplied})
+            settings.update(supplied.get('longform', {}))
+        else:
+            settings.update(supplied)
     margins = settings["safe_margins"]
     if any(not isinstance(margins.get(k), int) or margins[k] < 0
            for k in ("left", "right", "top", "bottom")):
         raise ValueError("safe_margins에는 0 이상의 정수 픽셀이 필요해요.")
-    if margins["left"] + margins["right"] >= W - 400:
+    if margins["left"] + margins["right"] >= width - 400:
         raise ValueError("자막 안전영역의 폭이 너무 좁아요.")
     if settings["zoom_amount"] != 0 or settings["shake_pixels"] != 0:
         raise ValueError("사진 고정 방식에서는 확대와 흔들림 설정이 0이어야 해요.")
@@ -81,9 +107,38 @@ def settings_for(path=SETTINGS_PATH):
             or not isinstance(settings["image_transition_ms"], (int, float))
             or not 180 <= settings["image_transition_ms"] <= 220):
         raise ValueError("사진 전환은 180~220ms 교차전환, 공격→반응은 하드컷이어야 해요.")
-    if not (margins["top"] < settings["art_top"] < settings["art_bottom"]
-            < settings["caption_top"] < settings["caption_bottom"] <= H - margins["bottom"]):
+    if longform:
+        if not (0 <= settings['art_top'] < settings['art_bottom'] <= height
+                and margins['top'] + 100 < settings['caption_top']
+                < settings['caption_bottom'] <= height - margins['bottom']):
+            raise ValueError('롱폼 가로 화면의 제목·자막 안전영역을 확인하세요.')
+    elif not (margins["top"] < settings["art_top"] < settings["art_bottom"]
+              < settings["caption_top"] < settings["caption_bottom"] <= height - margins["bottom"]):
         raise ValueError("상단 제목·그림·자막·하단 안전영역이 겹쳐요.")
+    if longform:
+        for key in ("show_header", "show_overlay_bands", "white_captions"):
+            if key in settings and type(settings[key]) is not bool:
+                raise ValueError(f"{key} must be a boolean")
+        outline = settings.get("text_outline_width", 4)
+        if type(outline) is not int or not 0 <= outline <= 4:
+            raise ValueError("text_outline_width must be an integer from 0 to 4")
+        overrides = settings.get("header_image_overrides", {})
+        if not isinstance(overrides, dict):
+            raise ValueError("header_image_overrides must map episode images to title and panel boxes")
+        allowed_images = set(image_names(cfg or {}))
+        for name, override in overrides.items():
+            if name not in allowed_images or not isinstance(override, dict):
+                raise ValueError("Header override requires an image declared by this episode")
+            for key in ("title_box", "panel_box"):
+                box = override.get(key)
+                if (not isinstance(box, (list, tuple)) or len(box) != 4
+                        or any(type(x) is not int for x in box)
+                        or not (0 <= box[0] < box[2] <= width and 0 <= box[1] < box[3] <= height)):
+                    raise ValueError("Header override boxes must lie within the video frame")
+            title, panel = override["title_box"], override["panel_box"]
+            if not (panel[0] <= title[0] and panel[1] <= title[1]
+                    and title[2] <= panel[2] and title[3] <= panel[3]):
+                raise ValueError("Header title box must fit inside its panel")
     return settings
 
 
@@ -156,7 +211,7 @@ def validate_timeline(cfg, timeline, base, silent=False):
     base = Path(base)
     if cfg.get("schema_version") != 2 or timeline.get("schema_version") != 2:
         return ["새 제작은 schema_version=2가 필요해요. 구버전을 자동 대체하지 않아요."]
-    if cfg.get("winner") != "none":
+    if not is_longform(cfg) and cfg.get("winner") != "none":
         errors.append("winner는 none이어야 해요.")
     if timeline.get("fps") != FPS:
         errors.append("timeline의 fps는 30이어야 해요.")
@@ -205,7 +260,7 @@ def validate_timeline(cfg, timeline, base, silent=False):
     if cursor != total_frames:
         errors.append("마지막 장면과 전체 프레임 수가 달라요.")
     for who in ("a", "b"):
-        name = cfg[who].get("image")
+        name = cfg[who].get("image", who + '.png') if is_longform(cfg) else cfg[who].get('image')
         if not name or not safe_child(base, name).is_file():
             errors.append(f"{who}: 인물 카드 그림이 없어요.")
     if not silent:
@@ -234,7 +289,12 @@ def photo_transition_frames(previous, segment, settings):
     attack_reaction = (str(before).endswith("_atk.png") and str(after).endswith("_react.png"))
     same_edge = (previous.get("kind") == segment.get("kind") == "edge"
                  and previous.get("condition") == segment.get("condition"))
-    if attack_reaction or same_edge:
+    action_cut = (settings.get('format') == 'longform' and
+                  (segment.get('transition') in ('cut', 'hardcut')
+                   or (previous.get('scene_id') == segment.get('scene_id')
+                       and (previous.get('kind') in ('action', 'edge', 'clash')
+                            or segment.get('kind') in ('action', 'edge', 'clash')))))
+    if attack_reaction or same_edge or action_cut:
         return 0
     # Quantize inside the requested 180–220ms band. At 30fps only six
     # frames fit; rounding 180/220ms independently would give 167/233ms.
@@ -247,26 +307,59 @@ class Episode:
     """Static contained photos; only the photo layer can crossfade at a cut."""
     def __init__(self, cfg, base, settings=None):
         self.cfg, self.base = cfg, Path(base)
-        self.settings = settings or settings_for()
+        self.settings = settings or settings_for(cfg=cfg)
+        self.longform = is_longform(cfg)
+        spec = video_spec(cfg)
+        self.width, self.height = spec['width'], spec['height']
+        self._last_frame_key, self._last_frame = None, None
         self.images = {}
-        names = {cfg["a"]["image"], cfg["b"]["image"]}
+        self._image_cache = OrderedDict()
+        self.visual_plan = VisualShotPlan(self.settings.get("visual_shots", []), set(image_names(cfg))) if self.longform else None
+        self.shot_caption_layouts = {}
+        names = ({cfg[who].get('image', who + '.png') for who in ('a', 'b')} if self.longform
+                 else {cfg['a']['image'], cfg['b']['image']})
         names.update(s["image"] for s in speech_segments(cfg) if s["image"])
         for name in names:
-            with Image.open(safe_child(self.base, name)) as image:
-                self.images[name] = ImageOps.exif_transpose(image).convert("RGB")
+            if self.longform:
+                self.images[name] = None
+            else:
+                with Image.open(safe_child(self.base, name)) as image:
+                    self.images[name] = ImageOps.exif_transpose(image).convert("RGB")
         m = self.settings["safe_margins"]
-        self.left, self.right = m["left"], W - m["right"]
-        self.art_box = (30, self.settings["art_top"], W - 30, self.settings["art_bottom"])
+        self.left, self.right = m["left"], self.width - m["right"]
+        self.art_box = ((0, self.settings['art_top'], self.width, self.settings['art_bottom'])
+                        if self.longform else (30, self.settings['art_top'], W - 30, self.settings['art_bottom']))
         self.caption_box = (self.left, self.settings["caption_top"], self.right, self.settings["caption_bottom"])
-        self.background = Image.new("RGB", (W, H), BLACK)
+        self.background = Image.new("RGB", (self.width, self.height), BLACK)
         self.layouts = {}
-        self._art_cache = {}
-        self._photo_cache = {}
+        self._art_cache = OrderedDict()
+        self._photo_cache = OrderedDict()
         draw = ImageDraw.Draw(self.background)
         for segment in speech_segments(cfg):
             self.layouts[segment["id"]] = layout_text(
                 draw, segment["display_text"], self.caption_box,
                 self.settings["subtitle_size"], self.settings["subtitle_min_size"], max_lines=2)
+
+    def _image_for(self, name):
+        if not self.longform:
+            return self.images[name]
+        if self.images[name] is None:
+            with Image.open(safe_child(self.base, name)) as image:
+                self.images[name] = ImageOps.exif_transpose(image).convert('RGB')
+        self._image_cache[name] = True
+        self._image_cache.move_to_end(name)
+        while len(self._image_cache) > 4:
+            evicted, _ = self._image_cache.popitem(last=False)
+            self.images[evicted] = None
+        return self.images[name]
+
+    def _remember(self, cache, key, value):
+        cache[key] = value
+        cache.move_to_end(key)
+        if self.longform:
+            while len(cache) > 4:
+                cache.popitem(last=False)
+        return value
 
     def contained_art(self, name, progress=0.0, moving=False, shake=0.0, box=None):
         # Keep the former call signature for preview callers. Motion arguments
@@ -277,7 +370,8 @@ class Episode:
         key = (name, tuple(box))
         if key not in self._art_cache:
             max_size = (right - left - 2 * margin, bottom - top - 2 * margin)
-            self._art_cache[key] = ImageOps.contain(self.images[name], max_size, Image.Resampling.LANCZOS)
+            self._remember(self._art_cache, key, ImageOps.contain(self._image_for(name), max_size, Image.Resampling.LANCZOS))
+        self._art_cache.move_to_end(key)
         art = self._art_cache[key]
         x = left + (right - left - art.width) // 2
         y = top + (bottom - top - art.height) // 2
@@ -318,24 +412,99 @@ class Episode:
         return title, "", color
 
     def header(self, draw, segment):
+        if self.longform and not self.settings.get("show_header", True):
+            return
         title, sub, color = self.header_content(segment)
+        override = (self.settings.get("header_image_overrides", {}).get(segment.get("image"))
+                    if self.longform else None)
         top = self.settings["safe_margins"]["top"]
-        draw_layout(draw, layout_text(draw, title, (self.left, top, self.right, top + 95),
-                                      self.settings["header_size"], 44), color)
+        box = tuple(override["title_box"]) if override else (self.left, top, self.right, top + 95)
+        draw_layout(draw, layout_text(draw, title, box, self.settings["header_size"], 44,
+                                      max_lines=1 if override else None), color)
 
     def photo_layer(self, name, box=None):
         box = box or self.art_box
         key = (name, tuple(box))
         if key in self._photo_cache:
+            self._photo_cache.move_to_end(key)
             return self._photo_cache[key]
         left, top, right, bottom = box
         layer = Image.new("RGB", (right - left, bottom - top), BLACK)
         art, (x, y) = self.contained_art(name, box=box)
         layer.paste(art, (x - left, y - top))
-        self._photo_cache[key] = layer
+        self._remember(self._photo_cache, key, layer)
         return layer
 
+    def planned_photo(self, shot):
+        crop = shot.get("crop")
+        if crop is None:
+            return self.photo_layer(shot["image"])
+        key = ("planned_crop", shot["image"], tuple(crop))
+        if key not in self._photo_cache:
+            source = self._image_for(shot["image"])
+            if crop[2] > source.width or crop[3] > source.height:
+                raise ValueError("Visual crop exceeds the actual source image")
+            fitted = ImageOps.fit(source.crop(tuple(crop)),
+                (self.art_box[2] - self.art_box[0], self.art_box[3] - self.art_box[1]),
+                method=Image.Resampling.LANCZOS)
+            self._remember(self._photo_cache, key, fitted)
+        self._photo_cache.move_to_end(key)
+        return self._photo_cache[key]
+
+    def longform_frame(self, segment, index, previous=None):
+        if not segment.get('image'):
+            raise ValueError('롱폼의 첫 장면과 각 컷에는 실제 연결 이미지가 필요해요.')
+        shot_index, shot = self.visual_plan.at(index)
+        transition = (self.visual_plan.dissolve_frames(shot_index) if shot is not None
+                      else photo_transition_frames(previous, segment, self.settings))
+        offset = index - (shot['start_frame'] if shot is not None else segment['start_frame'])
+        caption_visible = index / FPS + 1e-9 >= caption_start(segment)
+        key = (segment['id'], shot_index, offset if 0 <= offset < transition else -1, caption_visible)
+        if key == self._last_frame_key:
+            return self._last_frame
+        frame = self.background.copy()
+        art = self.planned_photo(shot) if shot is not None else self.photo_layer(segment['image'])
+        if transition > 1 and 0 <= offset < transition:
+            previous_art = (self.planned_photo(self.visual_plan.shots[shot_index - 1])
+                            if shot is not None else self.photo_layer(previous['image']))
+            art = Image.blend(previous_art, art, offset / (transition - 1))
+        frame.paste(art, self.art_box[:2])
+        # Only artwork dissolves; horizontal text overlays remain stable.
+        bands = ImageDraw.Draw(frame, 'RGBA')
+        header_override = self.settings.get("header_image_overrides", {}).get(segment.get("image"))
+        header_panel = tuple(header_override["panel_box"]) if header_override else (0, 0, self.width, 136)
+        show_bands = self.settings.get("show_overlay_bands", True)
+        if show_bands:
+            if self.settings.get("show_header", True):
+                bands.rectangle(header_panel, fill=(*BLACK, 190))
+            bands.rectangle((0, self.settings['caption_top'] - 22, self.width, self.height), fill=(*BLACK, 210))
+        draw = ImageDraw.Draw(frame)
+        self.header(draw, segment)
+        outline = self.settings.get("text_outline_width", 4)
+        if segment.get('cta_overlay'):
+            box = (self.left, 698, self.right, 820)
+            if show_bands:
+                bands.rectangle((0, 684, self.width, 834), fill=(*BLACK, 210))
+            draw_layout(draw, layout_text(draw, segment['cta_overlay'], box, 42, 38, max_lines=2),
+                        WHITE, stroke=outline)
+        if not segment.get('caption_in_overlay') and caption_visible:
+            color = (WHITE if self.settings.get("white_captions", False)
+                     else YELLOW if segment['kind'] in ('hook', 'question') else WHITE)
+            layout = self.layouts[segment['id']]
+            if shot is not None and shot.get('caption_box'):
+                layout_key = segment['id'] + ':' + str(shot_index)
+                if layout_key not in self.shot_caption_layouts:
+                    self.shot_caption_layouts[layout_key] = layout_text(draw, segment['display_text'],
+                        tuple(shot['caption_box']), self.settings['subtitle_size'],
+                        self.settings['subtitle_min_size'], max_lines=2)
+                layout = self.shot_caption_layouts[layout_key]
+            draw_layout(draw, layout, color, stroke=outline)
+        self._last_frame_key, self._last_frame = key, frame
+        return frame
+
     def frame(self, segment, index, previous=None):
+        if self.longform:
+            return self.longform_frame(segment, index, previous)
         frame = self.background.copy()
         overlay = segment.get('cta_overlay')
         art_box = (30, self.settings['art_top'], W - 30, 1300) if overlay else self.art_box
@@ -390,17 +559,44 @@ def review_samples(timeline, settings=None):
             add(start + transition - 1, sid + " 사진 교차전환 끝")
         add(min(end - 1, start + max(1, transition)), sid + " 전환 후 고정")
         previous = segment
+    if settings.get('format') == 'longform' and settings.get('visual_shots'):
+        for i, shot in enumerate(settings['visual_shots']):
+            start, end = shot['start_frame'], shot['end_frame']
+            for n, suffix in ((start, '시작'), ((start + end - 1)//2, '중간'), (end-1, '끝')):
+                add(n, f"화면숏 {i+1} {suffix}")
+            if i and shot.get('transition') == 'crossfade':
+                add(start + 3, f"화면숏 {i+1} 교차전환 중간")
     return [{"frame": n, "time": n / FPS, "labels": labels} for n, labels in sorted(samples.items())]
 
 
-def extract_reviews(video, timeline, out, video_hash, settings=None):
+def balanced_frame_selection(frames):
+    """Keep FFmpeg expression recursion logarithmic for longform review samples."""
+    terms = [f"eq(n\\,{int(frame)})" for frame in frames]
+    if not terms:
+        raise ValueError("At least one review frame is required")
+    def combine(start, end):
+        if end - start == 1:
+            return terms[start]
+        middle = (start + end) // 2
+        return "(" + combine(start, middle) + "+" + combine(middle, end) + ")"
+    return combine(0, len(terms))
+
+
+def extract_reviews(video, timeline, out, video_hash, settings=None, cfg=None):
     review_dir = out / ("review_" + video_hash[:12])
     review_dir.mkdir(exist_ok=True)
     samples = review_samples(timeline, settings)
-    expression = "+".join(f"eq(n\\,{s['frame']})" for s in samples)
-    subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(video), "-vf", "select=" + expression,
+    expression = balanced_frame_selection(s["frame"] for s in samples)
+    filters = ['-vf', 'select=' + expression]
+    if is_longform(cfg or {}):
+        # Many longform cues can exceed Windows' command-line length limit.
+        selection = review_dir / 'selection.ffscript'
+        selection.write_text('select=' + expression, encoding='utf-8')
+        filters = ['-filter_script:v', str(selection)]
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(video), *filters,
                     "-fps_mode", "vfr", "-threads", "2", str(review_dir / "frame_%04d.png")], check=True)
-    cols, tw, th, label_h = 5, 216, 384, 66
+    spec = video_spec(cfg or {})
+    cols, tw, th, label_h = (6, 320, 180, 66) if is_longform(cfg or {}) else (5, 216, 384, 66)
     sheet = Image.new("RGB", (cols * tw, math.ceil(len(samples) / cols) * (th + label_h)), BLACK)
     draw = ImageDraw.Draw(sheet)
     for i, item in enumerate(samples):
@@ -408,7 +604,7 @@ def extract_reviews(video, timeline, out, video_hash, settings=None):
         if not path.is_file():
             raise RuntimeError("MP4에서 필요한 검수 프레임을 추출하지 못했어요.")
         with Image.open(path) as image:
-            if image.size != (W, H):
+            if image.size != (spec['width'], spec['height']):
                 raise RuntimeError("검수 프레임이 원본 해상도가 아니에요.")
             small = image.resize((tw, th), Image.Resampling.LANCZOS)
         x, y = (i % cols) * tw, (i // cols) * (th + label_h)
@@ -438,9 +634,10 @@ def technical_checks(video, timeline, silent=False, cfg=None):
         rate = 0
     actual_duration = float(metadata.get("format", {}).get("duration", 0))
     minimum_duration, maximum_duration = duration_limits(cfg or {})
+    spec = video_spec(cfg or {})
     checks = {
         "one_video_stream": len(videos) == 1,
-        "resolution": (v.get("width"), v.get("height")) == (W, H),
+        "resolution": (v.get("width"), v.get("height")) == (spec['width'], spec['height']),
         "fps": abs(rate - FPS) < .001,
         "codec_h264": v.get("codec_name") == "h264",
         "pixel_format_yuv420p": v.get("pix_fmt") == "yuv420p",
@@ -454,7 +651,12 @@ def technical_checks(video, timeline, silent=False, cfg=None):
     decoded = subprocess.run(["ffmpeg", "-v", "error", "-i", str(video), "-f", "null", "-"],
                              capture_output=True, text=True, encoding="utf-8", errors="replace")
     checks["full_decode"] = decoded.returncode == 0 and not decoded.stderr.strip()
-    return {"checks": checks, "metadata": metadata, "decode_errors": decoded.stderr.strip(),
+    audio_identity = {}
+    if is_longform(cfg or {}) and not silent:
+        from check_episode import final_audio_sha256, audio_timing_hash
+        audio_identity = {'final_audio_sha256': final_audio_sha256(video),
+                          'audio_timing_hash': audio_timing_hash(timeline)}
+    return {"checks": checks, "metadata": metadata, "decode_errors": decoded.stderr.strip(), **audio_identity,
             "duration": actual_duration, "passed": all(checks.values()),
             "production_profile": (cfg or {}).get("production_profile"),
             "duration_limits_seconds": [minimum_duration, maximum_duration]}
@@ -490,6 +692,13 @@ def render_episode(json_path, silent=False, settings_path=SETTINGS_PATH, *, auth
         raise ValueError("authorized_extra_renders must be a nonnegative integer")
     json_path = Path(json_path).resolve()
     base, cfg = json_path.parent, load_json(json_path)
+    if is_longform(cfg):
+        if silent:
+            raise ValueError('롱폼은 전체 낭독과 최종 MP4 청취 검수가 필요하며 --silent를 지원하지 않아요.')
+        from longform_profile import longform_production_errors
+        approval_errors = longform_production_errors(cfg, base)
+        if approval_errors:
+            raise ValueError('\n'.join(approval_errors))
     timeline_path = base / "timeline.json"
     if not timeline_path.is_file():
         raise ValueError("timeline.json이 없어요. 현재 대본의 음성을 먼저 생성하세요.")
@@ -499,12 +708,21 @@ def render_episode(json_path, silent=False, settings_path=SETTINGS_PATH, *, auth
     errors.extend(validate_voice(cfg, base))
     if errors:
         raise ValueError("\n".join(errors))
-    settings = settings_for(settings_path)
+    settings = settings_for(settings_path, cfg=cfg)
+    if is_longform(cfg):
+        if (settings.get('visual_shots') and
+                settings.get('visual_shots_timeline_sha256') != sha256_file(timeline_path)):
+            raise ValueError('Visual shots must be resolved from the current measured timeline hash')
+        VisualShotPlan(settings.get('visual_shots') or timeline_picture_shots(timeline),
+                       set(image_names(cfg)), timeline['total_frames'])
     ep = Episode(cfg, base, settings)
-    images = {name: sha256_file(safe_child(base, name)) for name in ep.images}
+    declared_images = image_names(cfg) if is_longform(cfg) else ep.images
+    images = {name: sha256_file(safe_child(base, name)) for name in declared_images}
     inputs = {"script_hash": script_hash(cfg), "timeline_sha256": sha256_file(timeline_path),
               "image_hashes": images, "settings_hash": object_hash(settings),
-              "renderer_sha256": sha256_file(Path(__file__)), "audio_mode": timeline["audio_mode"],
+              "renderer_sha256": sha256_file(Path(__file__)),
+              "visual_planner_sha256": sha256_file(Path(__file__).with_name("longform_visuals.py")),
+              "audio_mode": timeline["audio_mode"],
               "pcm_sha256": timeline.get("pcm_sha256"), "voice_input_hash": timeline.get("input_hash")}
     bgm = None
     if cfg.get("bgm") and not silent:
@@ -536,7 +754,7 @@ def render_episode(json_path, silent=False, settings_path=SETTINGS_PATH, *, auth
         atomic_json(history_path, history)
         partial = out / ".video.rendering.mp4"
         command = ["ffmpeg", "-y", "-v", "error", "-f", "rawvideo", "-pixel_format", "rgb24",
-                   "-video_size", f"{W}x{H}", "-framerate", str(FPS), "-i", "pipe:0"]
+                   "-video_size", f"{ep.width}x{ep.height}", "-framerate", str(FPS), "-i", "pipe:0"]
         if not silent:
             command += ["-i", str(safe_child(base, timeline["pcm_path"]))]
             if bgm:
@@ -580,10 +798,11 @@ def render_episode(json_path, silent=False, settings_path=SETTINGS_PATH, *, auth
                     shutil.copy2(video, archive)
             os.replace(partial, video)
             video_hash = sha256_file(video)
-            extract_reviews(video, timeline, out, video_hash, settings)
+            extract_reviews(video, timeline, out, video_hash, settings, cfg=cfg)
             write_subtitles(timeline, out)
             atomic_json(out / "layout_boxes.json", {"input_hash": render_hash, "settings": settings,
-                                                    "caption_layouts": ep.layouts})
+                                                    "caption_layouts": ep.layouts,
+                                                    "shot_caption_layouts": ep.shot_caption_layouts})
             atomic_json(out / "technical_qa.json", {
                 **inputs, **technical, "status": "PASS", "input_hash": render_hash, "video_sha256": video_hash,
                 "checked_at": utc_now(), "visual_review": "UNREVIEWED",

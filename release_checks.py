@@ -1,10 +1,14 @@
 """Explicit user acceptance is a release decision, never a synthetic QA PASS."""
 from pathlib import Path
-from episode_core import load_json, sha256_file, script_hash, image_names
+from episode_core import load_json, sha256_file, script_hash, image_names, is_longform
 
 
 def release_errors(episode_path, quality_errors):
     base = Path(episode_path).resolve().parent
+    # Longform listening approval has its own hash-bound gate. Generic legacy
+    # acceptance cannot waive a visual error or an unrun technical check.
+    if is_longform(load_json(episode_path)):
+        return list(quality_errors)
     path = base / 'user_release_acceptance.json'
     if not path.exists():
         return list(quality_errors)

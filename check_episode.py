@@ -11,9 +11,10 @@ import subprocess
 from fractions import Fraction
 from pathlib import Path
 from PIL import Image
-from episode_core import DETAIL_PROFILE, IMAGE_NAMES, SCHEMA_VERSION, SHOWDOWN_PROFILE, STRUCTURED_PROFILES, additional_edge_specs, duration_limits, image_names, load_json, narration_groups, nfc, object_hash, safe_child, script_hash, sha256_file, speech_segments, validate_detail_options
+from episode_core import DETAIL_PROFILE, IMAGE_NAMES, SCHEMA_VERSION, SHOWDOWN_PROFILE, STRUCTURED_PROFILES, USER_VERBATIM_IMAGE_NAMES, is_user_verbatim, additional_edge_specs, duration_limits, image_names, load_json, narration_groups, nfc, object_hash, safe_child, script_hash, sha256_file, speech_segments, validate_detail_options, is_longform, video_spec
 from subtitle_checks import validate_subtitles
 from audio_review_checks import validate_audio_model_review
+from image_review_contract import contract_errors, generation_records, latest_generation
 
 LIMITS = {"hook": 30, "tag": 14, "intro": 32, "edge_title": 14, "edge_line": 32, "reason": 30, "question": 34}
 METADATA_FILES = ("title.txt", "description.txt", "pinned_comment.txt")
@@ -53,15 +54,21 @@ DELIVERY_OPTIONAL_SOURCES = {
 
 
 def delivery_source(base, name):
+    cfg_path = Path(base) / "episode.json"
+    cfg = load_json(cfg_path) if cfg_path.is_file() else {}
+    thumb = cfg.get("thumb", "thumb.png") if is_longform(cfg) else "thumb.png"
     if name == "thumbnail.png" and (Path(base) / "upload_thumbnail.png").is_file():
         review = load_json(Path(base) / "upload_thumbnail_review.json")
         if (review.get("status") != "PASS"
                 or review.get("sha256") != sha256_file(Path(base) / "upload_thumbnail.png")
-                or review.get("source_sha256") != sha256_file(Path(base) / "thumb.png")
+                or review.get("source_sha256") != sha256_file(safe_child(Path(base), thumb))
                 or not review.get("observations")):
             raise ValueError("Upload thumbnail needs a current visual review")
+        if is_longform(cfg) and (not review.get("full_observations") or not review.get("detail_observations")
+                                or not review.get("small_size_observations") or review.get("issues") != []):
+            raise ValueError("Longform upload thumbnail needs actual full/detail/small-list observations without unresolved issues")
         return "upload_thumbnail.png"
-    return DELIVERY_SOURCES[name]
+    return thumb if name == "thumbnail.png" else DELIVERY_SOURCES[name]
 
 
 def _nonempty(value):
@@ -118,6 +125,24 @@ def _check_setup_text(cfg, errors):
         if not ok:
             errors.append(prefix + ": " + message)
 
+    # Per-episode dialogue opt-in: keep the default single-sentence contract.
+    dialogue_cues = set()
+    if 'dialogue_cues' in cfg:
+        require(detail, 'dialogue_cues is supported only by showdown_detail_v5')
+        selected = cfg['dialogue_cues']
+        require(isinstance(selected, list), 'dialogue_cues: list of cue IDs required')
+        if isinstance(selected, list):
+            require(all(isinstance(cue, str) for cue in selected),
+                    'dialogue_cues: every cue ID must be a string')
+            if all(isinstance(cue, str) for cue in selected):
+                known = {'hook', 'reason', 'question', 'cta', 'setup.0', 'setup.1'}
+                known.update(f'{who}.{part}.{index}' for who in ('a', 'b')
+                             for part in ('intro', 'edge') for index in (0, 1))
+                require(len(selected) == len(set(selected)), 'dialogue_cues: duplicate cue IDs')
+                require(set(selected) <= known, 'dialogue_cues: unknown cue ID')
+                if detail:
+                    dialogue_cues = set(selected) & known
+
     def sentence(value, where, limit, question=False, clause=False):
         if not _nonempty(value):
             require(False, where + ": nonempty sentence required")
@@ -128,7 +153,11 @@ def _check_setup_text(cfg, errors):
         stripped = value.rstrip()
         if not clause:
             require(bool(re.search(r"[.?!]$", stripped)), where + ": sentence must end with .?!")
-        require(not re.search(r"[.?!]\s*\S", stripped[:-1]), where + ": use one sentence")
+        if where in dialogue_cues:
+            require(len(re.findall(r"[.?!]\s*(?=\S)", stripped[:-1])) <= 1,
+                    where + ": use at most two sentences for dialogue")
+        else:
+            require(not re.search(r"[.?!]\s*\S", stripped[:-1]), where + ": use one sentence")
         if question:
             require(stripped.endswith("?"), where + ": question must end with ?")
 
@@ -333,7 +362,8 @@ def _check_story_text(cfg, errors):
         return
     require(6 <= len(beats) <= 20, "story_beats must contain 6~20 cues")
     allowed_kinds = {"hook", "intro", "clash", "edge", "reason", "question", "story"}
-    allowed_images = set(IMAGE_NAMES)
+    verbatim = is_user_verbatim(cfg)
+    allowed_images = set(USER_VERBATIM_IMAGE_NAMES if verbatim else IMAGE_NAMES)
     indexed, ids, audio_names = {}, [], {audio_key("cta")}
     kinds = {name: [] for name in allowed_kinds}
     for position, beat in enumerate(beats):
@@ -359,7 +389,8 @@ def _check_story_text(cfg, errors):
         require(beat.get("condition") in (None, "a", "b"), f"{where} condition must be null/a/b")
         picture = beat.get("image")
         require(picture is None or (isinstance(picture, str) and picture in allowed_images),
-                f"{where} image must be one of the fixed 11 images or null")
+                (f"{where} image must use one of the fixed nine verbatim images" if verbatim
+                 else f"{where} image must be one of the fixed 11 images or null"))
         require(isinstance(beat.get("header", ""), str), f"{where} header must be a string")
         for field in ("display_text", "spoken_text"):
             text = beat.get(field)
@@ -368,7 +399,8 @@ def _check_story_text(cfg, errors):
     if beats:
         require(isinstance(beats[0], dict) and beats[0].get("kind") == "hook", "the first cue must be the hook")
         require(isinstance(beats[-1], dict) and beats[-1].get("kind") == "question", "the last story cue must be the question")
-    for name, limit in (("hook", 30), ("reason", 30), ("question", 34)):
+    text_limits = (("hook", 40), ("reason", 48), ("question", 40)) if verbatim else (("hook", 30), ("reason", 30), ("question", 34))
+    for name, limit in text_limits:
         value = cfg.get(name)
         require(_nonempty(value), f"top-level {name} text is required")
         if _nonempty(value):
@@ -413,7 +445,8 @@ def _check_story_text(cfg, errors):
         texts = [indexed[x].get("spoken_text") for x in members]
         if all(_nonempty(x) for x in texts):
             joined = " ".join(nfc(text) for text in texts).rstrip()
-            require(bool(re.search(r"[.?!]$", joined)),
+            terminator = r"[.?!][\"'”’]*$" if verbatim else r"[.?!]$"
+            require(bool(re.search(terminator, joined)),
                     f"{where} must end a complete spoken passage with .?!; a comma is only internal")
     require(flattened == ids and len(ids) == len(beats),
             "narration_groups must include every story cue exactly once, consecutively and in order; shared CTA is automatic")
@@ -436,6 +469,15 @@ def check_text(cfg, errors):
     if not isinstance(cfg, dict):
         errors.append("episode.json must be an object")
         return
+    try:
+        longform = is_longform(cfg)
+    except ValueError as exc:
+        errors.append(str(exc))
+        return
+    if longform:
+        from longform_profile import longform_text_errors
+        errors.extend(longform_text_errors(cfg))
+        return
     require(cfg.get("schema_version") == SCHEMA_VERSION, "schema_version: 새 제작은 반드시 2여야 해요")
     require(cfg.get("winner") == "none", 'winner: 명시적으로 "none"이어야 해요')
     require("stats" not in cfg and "cta" not in cfg, "stats/cta 필드는 사용할 수 없어요")
@@ -444,6 +486,30 @@ def check_text(cfg, errors):
     require(profile is None or profile in STRUCTURED_PROFILES, "Unknown production_profile")
     require('additional_edges' not in cfg or profile == SHOWDOWN_PROFILE,
             'additional_edges is only supported by showdown_story_v4')
+    require("user_verbatim_script" not in cfg or is_user_verbatim(cfg),
+            "user_verbatim_script requires a nonempty script and the explicit v5 profile")
+    if is_user_verbatim(cfg):
+        _check_story_text(cfg, errors)
+        try:
+            cues = speech_segments(cfg)
+            narration_groups(cfg)
+            require({cue['image'] for cue in cues} == set(USER_VERBATIM_IMAGE_NAMES),
+                    "user_verbatim_script requires the nine approved screen images")
+        except (ValueError, KeyError, TypeError, AttributeError, IndexError) as exc:
+            require(False, str(exc))
+        for who in ('a', 'b'):
+            info = cfg.get(who, {})
+            require(isinstance(info, dict) and _nonempty(info.get('name')),
+                    who + ': character name required')
+            if isinstance(info, dict):
+                require(_nonempty(info.get('tag')) and len(nfc(info['tag'])) <= 14,
+                        who + '.tag: 1~14 NFC characters required')
+                require(info.get('image') == who + '.png', who + '.image: fixed portrait filename required')
+        cliff = cfg.get('cliffhanger', {})
+        require(isinstance(cliff, dict) and cliff.get('image') == 'cliffhanger.png'
+                and cliff.get('winner_revealed') is False,
+                'cliffhanger: unresolved ending artwork required')
+        return
     if profile in STRUCTURED_PROFILES:
         _check_setup_text(cfg, errors)
         return
@@ -505,11 +571,15 @@ def check_images(cfg, base_dir, errors):
             with Image.open(path) as image:
                 image.load()
                 expected = (1024, 1024) if name in ("a.png", "b.png") else (1024, 1536)
-                if image.size != expected:
+                if is_longform(cfg):
+                    reference_images = {cfg.get(who, {}).get("image") for who in ("a", "b")}
+                    if name not in reference_images and image.width <= image.height:
+                        errors.append(f"{name}: longform source must use a landscape composition without stretching")
+                elif image.size != expected:
                     errors.append(f"{name}: 실제 크기 {image.size}, 필수 크기 {expected}")
                 pixels = image.convert("RGBA")
                 digest = hashlib.sha256(str(pixels.size).encode() + pixels.tobytes()).hexdigest()
-                if digest in seen:
+                if digest in seen and not is_longform(cfg):
                     errors.append(f"동일 픽셀 복제: {name} = {seen[digest]}")
                 seen[digest] = name
         except (OSError, ValueError) as exc:
@@ -563,11 +633,12 @@ def validate_planning(cfg, base, errors):
     if not isinstance(planning, dict) or not planning.get("idea_id"):
         errors.append("planning.idea_id is required")
         return
-    root = next((p for p in base.parents if (p / "matchup_ideas.json").is_file()), None)
+    pool_name = "matchup_ideas_longform.json" if is_longform(cfg) else "matchup_ideas.json"
+    root = next((p for p in base.parents if (p / pool_name).is_file()), None)
     if root is None:
-        errors.append("matchup_ideas.json cannot be found in the project ancestors")
+        errors.append(pool_name + " cannot be found in the project ancestors")
         return
-    pool = _read(root, "matchup_ideas.json", errors)
+    pool = _read(root, pool_name, errors)
     matches = [x for x in pool.get("candidates", []) if x.get("id") == planning["idea_id"]]
     if len(matches) != 1:
         errors.append("planning.idea_id must match exactly one candidate")
@@ -583,9 +654,12 @@ def validate_planning(cfg, base, errors):
                 errors.append(f"planning: {who}.{field} differs from selected source version/identity")
         if actual.get("name") != idea[who]["name"]:
             errors.append(f"planning: {who}.name differs from selected plan")
-    if planning.get("conditions") != idea.get("conditions"):
+    if is_longform(cfg):
+        if cfg.get("story_id") != idea.get("story_id") or cfg.get("story_plan") != idea.get("story_plan"):
+            errors.append("planning: story identity or reviewed narrative changed without synchronizing the idea")
+    elif planning.get("conditions") != idea.get("conditions"):
         errors.append("planning: conditions changed without synchronizing the idea")
-    if cfg.get("hook") != idea.get("hook"):
+    if not is_longform(cfg) and cfg.get("hook") != idea.get("hook"):
         errors.append("planning: hook changed without synchronizing the idea")
     for filename, field in (("title.txt", "title"), ("pinned_comment.txt", "pinned_comment")):
         path = base / filename
@@ -621,7 +695,8 @@ def validate_sources(cfg, base, signoffs, errors):
             errors.append(f"source record missing/stale: {segment['id']}")
         if record.get("kind") not in {"history", "narrative", "hypothetical"}:
             errors.append(f"source kind must distinguish fact/fiction/condition: {segment['id']}")
-        for field in ("work", "locator", "url", "checked_at", "summary"):
+        fields = ("summary",) if is_longform(cfg) and record.get("kind") == "hypothetical" else ("work", "locator", "url", "checked_at", "summary")
+        for field in fields:
             if not _nonempty(record.get(field)):
                 errors.append(f"{segment['id']}: source {field} required")
         for item in (segment["id"], segment["spoken_text"], record.get("url", "")):
@@ -637,6 +712,11 @@ def validate_sources(cfg, base, signoffs, errors):
 
 
 def validate_image_reviews(base, errors, cfg=None):
+    try:
+        generations = generation_records(base)
+    except (OSError, ValueError, TypeError) as exc:
+        generations = []
+        errors.append("Invalid image generation evidence: " + str(exc))
     document = _read(base, "image_review.json", errors)
     _read(base, "character_bible.json", errors)
     _read(base, "storyboard.json", errors)
@@ -654,6 +734,7 @@ def validate_image_reviews(base, errors, cfg=None):
         indexed[record.get("file")] = record
     for name in image_names(cfg or {}):
         review = indexed.get(name, {})
+        errors.extend(contract_errors(base, name, review, latest_generation(generations, name)))
         if review.get("status") != "PASS":
             errors.append(f"{name}: visual review is {review.get('status', 'UNREVIEWED')}")
         if not review.get("full_observations") or not review.get("detail_observations") or not review.get("reviewed_at"):
@@ -663,6 +744,9 @@ def validate_image_reviews(base, errors, cfg=None):
         if cfg and cfg.get('production_profile') in (SHOWDOWN_PROFILE, DETAIL_PROFILE) and name == 'cliffhanger.png':
             if not _nonempty(review.get('cliffhanger_observations')):
                 errors.append('cliffhanger.png: observations of both strengths and the unresolved outcome required')
+        if cfg and is_longform(cfg) and name == cfg.get("thumb"):
+            if not _nonempty(review.get("small_size_observations")):
+                errors.append(name + ": actual small-list thumbnail legibility observations required")
         version = review.get("generation_version")
         if isinstance(version, bool) or not isinstance(version, int) or not 1 <= version <= 4:
             errors.append(f"{name}: generation_version must respect initial + 3 revisions")
@@ -670,7 +754,19 @@ def validate_image_reviews(base, errors, cfg=None):
         _hash_matches(base, "character_bible.json", review.get("character_bible_sha256"), errors, name + " character reference")
         _hash_matches(base, "storyboard.json", review.get("storyboard_sha256"), errors, name + " storyboard")
         required = []
-        if name not in ("a.png", "b.png"):
+        if cfg and is_longform(cfg):
+            portraits = {cfg.get(who, {}).get("image") for who in ("a", "b")}
+            participants = set()
+            if name not in portraits:
+                if name == cfg.get("thumb"):
+                    participants.update(("a", "b"))
+                for cut in cfg.get("cuts", []):
+                    if cut.get("image") == name:
+                        participants.update(cut.get("participants", ["a", "b"]))
+                        if cut.get("participants") == [] and not cut.get("reference_reason"):
+                            errors.append(name + ": context/prop-only cut needs reference_reason")
+                required = [cfg.get(who, {}).get("image") for who in participants if cfg.get(who, {}).get("image")]
+        elif name not in ("a.png", "b.png"):
             if name in ("a_1.png", "a_2.png"):
                 required = ["a.png"]
             elif name in ("b_1.png", "b_2.png"):
@@ -691,8 +787,9 @@ def validate_video_specs(path, audio_mode, errors, cfg=None):
         result = subprocess.run(["ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", str(path)], capture_output=True, text=True, encoding="utf-8", errors="replace", check=True)
         probe = json.loads(result.stdout)
         video = next(x for x in probe["streams"] if x["codec_type"] == "video")
-        if (video.get("width"), video.get("height"), video.get("codec_name"), video.get("pix_fmt")) != (1080, 1920, "h264", "yuv420p"):
-            errors.append("Final video must be 1080x1920 H.264 yuv420p")
+        spec = video_spec(cfg or {})
+        if (video.get("width"), video.get("height"), video.get("codec_name"), video.get("pix_fmt")) != (spec["width"], spec["height"], "h264", "yuv420p"):
+            errors.append(f"Final video must be {spec['width']}x{spec['height']} H.264 yuv420p")
         if Fraction(video.get("avg_frame_rate", "0/1")) != 30:
             errors.append("Final video must be 30 fps")
         duration = float(probe["format"]["duration"])
@@ -725,6 +822,8 @@ def validate_quality(episode_path):
     for name in METADATA_FILES:
         _hash_matches(base, name, metadata.get("hashes", {}).get(name), errors, "metadata " + name)
     timeline = _read(base, "timeline.json", errors)
+    if is_longform(cfg):
+        validate_longform_metadata(cfg, base, timeline, errors)
     validate_subtitles(base, timeline, errors)
     audio_review = _read(base, "audio_review.json", errors)
     try:
@@ -733,7 +832,9 @@ def validate_quality(episode_path):
     except (OSError, ValueError, RuntimeError, KeyError, ImportError) as exc:
         errors.append("voice validation failed: " + str(exc))
     silent = timeline.get("audio_mode") == "silent"
-    if silent:
+    if is_longform(cfg):
+        validate_longform_audio(base, cfg, timeline, audio_review, signoffs, errors)
+    elif silent:
         if audio_review.get("status") != "N/A":
             errors.append("Explicit silent mode requires N/A audio review")
     elif audio_review.get("reviewer_kind") == "local_audio_model":
@@ -763,7 +864,7 @@ def validate_quality(episode_path):
         import make_vs
         if technical.get("renderer_sha256") != sha256_file(make_vs.__file__):
             errors.append("technical video: renderer changed since render")
-        if technical.get("settings_hash") != object_hash(make_vs.settings_for()):
+        if technical.get("settings_hash") != object_hash(make_vs.settings_for(base / "render_settings.json" if (base / "render_settings.json").is_file() else make_vs.SETTINGS_PATH, cfg=cfg)):
             errors.append("technical video: render settings changed since render")
     except (OSError, ValueError) as exc:
         errors.append("Cannot verify renderer/settings: " + str(exc))
@@ -793,7 +894,7 @@ def validate_quality(episode_path):
         errors.append("Full-resolution extracted MP4 review frames missing")
     try:
         from make_vs import review_samples
-        expected_frames = {item["frame"] for item in review_samples(timeline)}
+        expected_frames = {item["frame"] for item in review_samples(timeline, make_vs.settings_for(base / "render_settings.json" if (base / "render_settings.json").is_file() else make_vs.SETTINGS_PATH, cfg=cfg))}
         actual_frames = {item.get("frame") for item in review_frames.get("frames", [])}
         if not expected_frames.issubset(actual_frames):
             errors.append("Extracted review frames do not cover every required transition/caption/extreme")
@@ -803,14 +904,284 @@ def validate_quality(episode_path):
         _hash_matches(base / "out", frame.get("file"), frame.get("sha256"), errors, "extracted frame")
         try:
             with Image.open(safe_child(base / "out", frame.get("file"))) as image:
-                if image.size != (1080, 1920):
-                    errors.append("Review frame must preserve native 1080x1920 resolution: " + frame["file"])
+                spec = video_spec(cfg)
+                if image.size != (spec["width"], spec["height"]):
+                    errors.append(f"Review frame must preserve native {spec['width']}x{spec['height']} resolution: " + frame["file"])
         except (OSError, ValueError, TypeError) as exc:
             errors.append("Cannot inspect review frame: " + str(exc))
+    if is_longform(cfg):
+        validate_longform_frames(cfg, base, timeline, video_review, review_frames, errors)
     if not (base / "qa_report.md").is_file():
         errors.append("qa_report.md missing")
     validate_video_specs(base / "out/video.mp4", timeline.get("audio_mode"), errors, cfg)
     return errors
+
+
+
+
+def longform_chapters(cfg, timeline):
+    """Optional chapter anchors allow many scenes per chapter; all times are measured."""
+    segments = timeline.get("segments", [])
+    configured = cfg.get("chapters")
+    anchors = []
+    if configured is not None:
+        if not isinstance(configured, list) or not configured:
+            raise ValueError("chapters must be a nonempty list when configured")
+        for chapter in configured:
+            keys = [key for key in ("cue_id", "cut_id", "scene_id") if chapter.get(key)]
+            if len(keys) != 1 or not _nonempty(chapter.get("title")):
+                raise ValueError("Each chapter needs a meaningful title and exactly one cue/cut/scene anchor")
+            key = keys[0]
+            field = "id" if key == "cue_id" else key
+            match = next((segment for segment in segments if segment.get(field) == chapter[key]), None)
+            if match is None:
+                raise ValueError("Chapter anchor is absent from actual final timeline")
+            anchors.append((chapter["title"], match.get("start_frame")))
+    else:
+        scenes = {scene["id"]: scene for scene in cfg.get("scenes", [])}
+        previous = None
+        for segment in segments:
+            scene_id = segment.get("scene_id")
+            if scene_id == previous or segment.get("id") == "cta":
+                continue
+            previous = scene_id
+            scene = scenes.get(scene_id, {})
+            title = scene.get("title") or scene.get("objective")
+            if not _nonempty(title):
+                raise ValueError("Chapter needs a meaningful scene title or objective")
+            anchors.append((title, segment.get("start_frame")))
+    rows, previous_second = [], -1
+    for title, frame in anchors:
+        if type(frame) is not int or frame < 0:
+            raise ValueError("Chapter requires an actual nonnegative global start_frame")
+        seconds = frame // 30
+        if seconds <= previous_second or "\n" in title or "\r" in title:
+            raise ValueError("Chapters need ordered distinct actual timestamps and one-line titles")
+        previous_second = seconds
+        rows.append(f"{seconds // 60:02d}:{seconds % 60:02d} {title}")
+    return rows
+
+
+def linked_short_comment(cfg):
+    link = cfg.get("planning", {}).get("related_short")
+    if not link:
+        return None
+    relationship = link.get("relationship")
+    if relationship == "continuation":
+        return "이 대결의 전체 이야기는 롱폼에서 확인하세요. [롱폼 영상 링크]"
+    if relationship == "new_event":
+        return "이 두 인물의 새로운 이야기는 롱폼에서 확인하세요. [롱폼 영상 링크]"
+    raise ValueError("Linked Shorts relationship must be continuation or new_event")
+
+
+
+def linked_short_comment_document(cfg):
+    comment = linked_short_comment(cfg)
+    if comment is None:
+        return None
+    linked_id = cfg["planning"]["related_short"]["job_id"]
+    return "DRAFT — 게시/고정 미실행\nShorts job_id: " + linked_id + "\n\n" + comment + "\n"
+
+
+def validate_longform_metadata(cfg, base, timeline, errors):
+    try:
+        expected = longform_chapters(cfg, timeline)
+        description = (base / "description.txt").read_text(encoding="utf-8-sig")
+        actual = [line.strip() for line in description.splitlines() if re.match(r"^\d{2,}:\d{2}\s", line.strip())]
+        if not expected or actual != expected:
+            errors.append("longform metadata: chapters must use actual final scene boundaries in timeline order")
+    except (OSError, ValueError, KeyError) as exc:
+        errors.append("longform chapter validation failed: " + str(exc))
+    link = cfg.get("planning", {}).get("related_short")
+    if not link:
+        return
+    try:
+        linked_short_comment(cfg)
+        if not link.get("job_id") or not link.get("compatibility_notes") or not link.get("question_decision"):
+            raise ValueError("related_short needs job_id, edition/continuity review and question decision")
+        root = next(p for p in base.parents if (p / "plan_matchups.py").is_file())
+        short_path = safe_child(root, link.get("episode_path"))
+        short_cfg = load_json(short_path)
+        if is_longform(short_cfg) or short_cfg.get("job_id") != link["job_id"]:
+            raise ValueError("related_short must identify an actual Shorts job")
+        if {short_cfg.get(who, {}).get("name") for who in ("a", "b")} != {cfg.get(who, {}).get("name") for who in ("a", "b")}:
+            raise ValueError("related_short must use the same character pair")
+        for filename in ("episode.json", "source_records.json", "character_bible.json"):
+            _hash_matches(short_path.parent, filename, link.get("reference_hashes", {}).get(filename), errors, "related Shorts reference " + filename)
+    except (OSError, ValueError, TypeError, KeyError, StopIteration) as exc:
+        errors.append("longform related Shorts record invalid: " + str(exc))
+
+
+def audio_timing_hash(timeline):
+    """Identity of spoken content and its time placement, excluding visual data."""
+    keys = ("id", "group_id", "spoken_text", "tts_text", "start", "end", "start_frame", "end_frame",
+            "speech_start", "speech_end", "sample_start", "sample_end", "start_sample", "end_sample")
+    return object_hash({"audio_mode": timeline.get("audio_mode"), "sample_rate": timeline.get("sample_rate"),
+                        "duration": timeline.get("duration"), "total_frames": timeline.get("total_frames"),
+                        "segments": [{key: segment.get(key) for key in keys} for segment in timeline.get("segments", [])]})
+
+
+def final_audio_sha256(path):
+    """Hash actual final audio decoded to canonical stereo 48 kHz signed PCM."""
+    import tempfile
+    # stderr must not block a long decode; tempfile stays on configured project TEMP.
+    with tempfile.TemporaryFile() as error_log:
+        process = subprocess.Popen(["ffmpeg", "-v", "error", "-i", str(path), "-map", "0:a:0",
+                                    "-vn", "-ac", "2", "-ar", "48000", "-f", "s16le", "pipe:1"],
+                                   stdout=subprocess.PIPE, stderr=error_log)
+        digest, size = hashlib.sha256(), 0
+        try:
+            while data := process.stdout.read(1024 * 1024):
+                digest.update(data)
+                size += len(data)
+            if process.wait() or not size:
+                raise ValueError("Cannot decode complete final audio")
+        finally:
+            process.stdout.close()
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+    return digest.hexdigest()
+
+
+LONGFORM_AUDIO_CHECKS = ("asr_alignment", "starts_and_ends", "group_boundaries", "volume_clipping_silence",
+                         "audio_specs", "subtitle_srt_alignment")
+
+
+def validate_longform_audio(base, cfg, timeline, review, signoffs, errors):
+    """Technical evidence and explicit user full listening are independent gates."""
+    if timeline.get("audio_mode") == "silent":
+        errors.append("longform: narration cannot be bypassed with silent mode")
+        return
+    technical = review.get("technical", {})
+    if technical.get("status") != "PASS":
+        errors.append("LONGFORM_AUDIO_TECHNICAL_REQUIRED: required technical checks have not passed")
+    _hash_matches(base, "out/video.mp4", technical.get("video_sha256"), errors, "longform audio technical video")
+    _hash_matches(base, "timeline.json", technical.get("timeline_sha256"), errors, "longform audio technical timeline")
+    actual_timing = audio_timing_hash(timeline)
+    if technical.get("audio_timing_hash") != actual_timing:
+        errors.append("longform audio: technical timing identity is stale")
+    try:
+        actual_audio = final_audio_sha256(base / "out/video.mp4")
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        errors.append("longform audio: final PCM verification failed: " + str(exc))
+        actual_audio = None
+    if not actual_audio or technical.get("final_audio_sha256") != actual_audio:
+        errors.append("longform audio: technical final audio identity is stale")
+    for key in LONGFORM_AUDIO_CHECKS:
+        item = technical.get("checks", {}).get(key, {})
+        if item.get("status") != "PASS" or not item.get("observations") or item.get("issues") != []:
+            errors.append("longform audio technical check not reviewed/passed: " + key)
+        evidence = item.get("evidence", [])
+        if not isinstance(evidence, list) or not evidence:
+            errors.append("longform audio technical evidence missing: " + key)
+        else:
+            for entry in evidence:
+                if not isinstance(entry, dict):
+                    errors.append("longform audio technical evidence invalid: " + key)
+                    continue
+                _hash_matches(base, entry.get("file"), entry.get("sha256"), errors, "audio diagnostic " + key)
+    # ASR must cover the actual final MP4 and all current cues in sequence.
+    asr_file = technical.get("asr_file", "audio_analysis.json")
+    analysis = _read(base, asr_file, errors)
+    _hash_matches(base, asr_file, technical.get("asr_sha256"), errors, "longform ASR")
+    direct_asr = (analysis.get("video_sha256") == technical.get("video_sha256")
+                  and analysis.get("timeline_sha256") == technical.get("timeline_sha256"))
+    if not direct_asr:
+        # Keep the actual old ASR output unchanged. Visual-only reuse proves the
+        # old source audio and time placement, rather than relabeling its hashes.
+        reuse = technical.get("asr_reuse", {})
+        valid_reuse = (actual_audio is not None and reuse.get("final_audio_sha256") == actual_audio
+                       and reuse.get("audio_timing_hash") == actual_timing
+                       and reuse.get("source_video_sha256") == analysis.get("video_sha256"))
+        source_video_ok = _hash_matches(base, reuse.get("source_video_path"), analysis.get("video_sha256"), errors, "ASR predecessor MP4")
+        source_timeline_ok = _hash_matches(base, reuse.get("source_timeline_path"), analysis.get("timeline_sha256"), errors, "ASR predecessor timeline")
+        if source_video_ok and source_timeline_ok:
+            try:
+                valid_reuse = (valid_reuse and final_audio_sha256(safe_child(base, reuse["source_video_path"])) == actual_audio
+                               and audio_timing_hash(load_json(safe_child(base, reuse["source_timeline_path"]))) == actual_timing)
+            except (OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
+                errors.append("longform ASR predecessor verification failed: " + str(exc))
+                valid_reuse = False
+        else:
+            valid_reuse = False
+        if not valid_reuse:
+            errors.append("longform ASR: current analysis or verified identical final audio/timing reuse required")
+    if (analysis.get("status") != "ASR_ANALYSIS_COMPLETE_AUDIO_REVIEW_REQUIRED"
+            or not analysis.get("full_transcript") or not analysis.get("full_segments")
+            or not analysis.get("acoustic_diagnostics")):
+        errors.append("longform ASR: complete actual final audio analysis required")
+    comparisons = analysis.get("sentence_comparisons", [])
+    segments = timeline.get("segments", [])
+    if [x.get("id") for x in comparisons] != [x.get("id") for x in segments]:
+        errors.append("longform ASR: missing/duplicated/reordered cue comparisons")
+    resolutions = technical.get("asr_discrepancy_reviews", {})
+    for expected, comparison in zip(segments, comparisons):
+        if comparison.get("expected_for_comparison_only") != (expected.get("tts_text") or expected.get("spoken_text")):
+            errors.append("longform ASR: stale approved text for " + str(expected.get("id")))
+        if comparison.get("normalized_edit_distance") != 0:
+            decision = resolutions.get(comparison.get("id"), {})
+            if decision.get("status") != "RESOLVED" or not decision.get("observations") or not decision.get("evidence"):
+                errors.append("longform ASR: unresolved suspected omission/misreading " + str(comparison.get("id")))
+    approval = review.get("user_approval", {})
+    valid = (approval.get("status") == "APPROVED" and approval.get("reviewer_kind") == "user"
+             and approval.get("scope") == "full_final_mp4" and approval.get("full_listened") is True
+             and bool(approval.get("statement")) and bool(approval.get("approved_at"))
+             and bool(re.fullmatch(r"[0-9a-f]{64}", str(approval.get("video_sha256", "")))))
+    if not valid:
+        errors.append("LONGFORM_LISTENING_PENDING: user approval after listening to the full final MP4 is required")
+        return
+    if not actual_audio or approval.get("final_audio_sha256") != actual_audio or approval.get("audio_timing_hash") != actual_timing:
+        errors.append("LONGFORM_LISTENING_STALE: final sound or spoken time placement changed after approval")
+        return
+    current_video = technical.get("video_sha256")
+    if approval.get("video_sha256") != current_video:
+        # Preserve the approved predecessor as existing revision evidence.
+        previous = approval.get("approved_video_path")
+        if _hash_matches(base, previous, approval.get("video_sha256"), errors, "approved predecessor MP4"):
+            try:
+                if final_audio_sha256(safe_child(base, previous)) != actual_audio:
+                    errors.append("LONGFORM_LISTENING_STALE: approved predecessor audio differs")
+            except (OSError, ValueError, subprocess.SubprocessError) as exc:
+                errors.append("Cannot verify approved predecessor audio: " + str(exc))
+    binding = signoffs.get("audio", {})
+    if (binding.get("user_approval_sha256") != object_hash(approval)
+            or binding.get("video_sha256") != current_video
+            or binding.get("final_audio_sha256") != actual_audio
+            or binding.get("audio_timing_hash") != actual_timing):
+        errors.append("longform audio: current qa_signoffs.audio approval/version binding required")
+
+
+def validate_longform_frames(cfg, base, timeline, video_review, index, errors):
+    """Actual full-size observations cover cuts and transition samples, not a montage."""
+    frames = {item.get("frame"): item for item in index.get("frames", [])}
+    observations = video_review.get("frame_observations", [])
+    if not isinstance(observations, list):
+        errors.append("longform video: frame_observations must be a list")
+        return
+    observed = {}
+    for item in observations:
+        if not isinstance(item, dict):
+            errors.append("longform video: invalid frame observation")
+            continue
+        number = item.get("frame")
+        if number in observed:
+            errors.append("longform video: duplicate frame observation")
+        observed[number] = item
+        actual = frames.get(number, {})
+        if (item.get("status") != "PASS" or item.get("issues") != [] or not item.get("observations")
+                or item.get("full_resolution_viewed") is not True
+                or item.get("sha256") != actual.get("sha256") or not actual.get("sha256")):
+            errors.append("longform video: unreviewed/stale/unresolved actual frame " + str(number))
+    for cut in cfg.get("cuts", []):
+        cut_id = cut.get("id", cut.get("cut_id"))
+        matching = [seg for seg in timeline.get("segments", []) if seg.get("cut_id") == cut_id]
+        if not matching or not any(seg.get("start_frame", 0) <= number < seg.get("end_frame", 0)
+                                   for seg in matching for number in observed):
+            errors.append("longform video: no actual composed frame observation for cut " + str(cut_id))
+    for number, item in frames.items():
+        if any("사진 교차전환" in label for label in item.get("labels", [])) and number not in observed:
+            errors.append("longform video: transition sample not visually reviewed " + str(number))
 
 
 def validate_completion(episode_path):
@@ -824,18 +1195,29 @@ def validate_completion(episode_path):
         errors.append("Final delivery has not been verified as COMPLETE")
         return errors
     target = Path(delivery.get("path", ""))
-    desktop_layout = (delivery.get('layout') == 'desktop_title'
-                      and target.parent == Path(delivery.get('desktop_root', ''))
-                      and target.name == (base / 'title.txt').read_text(encoding='utf-8-sig').strip())
-    if not target.is_absolute() or (target.parent.name != "완성본" and not desktop_layout):
-        errors.append("COMPLETE requires the resolved 완성본/<title> delivery folder")
+    root_key = {'desktop_title': 'desktop_root', 'title_root': 'output_root'}.get(delivery.get('layout'))
+    title_layout = (root_key is not None
+                    and target.parent == Path(delivery.get(root_key) or '')
+                    and target.name == (base / 'title.txt').read_text(encoding='utf-8-sig').strip())
+    if not target.is_absolute() or (target.parent.name != "완성본" and not title_layout):
+        errors.append("COMPLETE requires a resolved category or exact-title delivery folder")
         return errors
     delivered = _read(target, "manifest.json", errors)
+    cfg = load_json(episode_path)
+    if is_longform(cfg) and (delivered.get("format") != "longform" or delivered.get("story_id") != cfg.get("story_id")):
+        errors.append("Delivered format/story identity differs from working longform")
     if not manifest.get("job_id") or delivered.get("job_id") != manifest.get("job_id"):
         errors.append("Delivered job ID differs from working job")
     _hash_matches(target, "manifest.json", delivery.get("manifest_sha256"), errors, "delivery manifest")
     files = delivered.get("files", {})
-    if delivered.get("status") != "COMPLETE" or delivered.get("working_episode") != str(episode_path):
+    recorded_episode = delivered.get("working_episode")
+    try:
+        same_episode = (isinstance(recorded_episode, str) and bool(recorded_episode.strip())
+                        and Path(recorded_episode).is_absolute() and Path(recorded_episode).is_file()
+                        and Path(recorded_episode).resolve(strict=True) == episode_path.resolve(strict=True))
+    except (OSError, ValueError, RuntimeError):
+        same_episode = False
+    if delivered.get("status") != "COMPLETE" or not same_episode:
         errors.append("Delivered manifest is not COMPLETE for this working episode")
     for name in DELIVERY_FILES:
         _hash_matches(target, name, files.get(name), errors, "delivered " + name)
@@ -845,6 +1227,15 @@ def validate_completion(episode_path):
         if name in files:
             _hash_matches(target, name, files[name], errors, "delivered optional " + name)
             _hash_matches(base, current, files[name], errors, "delivery current optional " + name)
+    if is_longform(cfg):
+        expected_comment = linked_short_comment_document(cfg)
+        if expected_comment is not None:
+            _hash_matches(target, "linked_short_comment.txt", files.get("linked_short_comment.txt"), errors, "delivered linked Shorts draft")
+            _hash_matches(base, "linked_short_comment.txt", files.get("linked_short_comment.txt"), errors, "current linked Shorts draft")
+            if not (base / "linked_short_comment.txt").is_file() or (base / "linked_short_comment.txt").read_text(encoding="utf-8-sig") != expected_comment:
+                errors.append("Linked Shorts comment draft does not match the current relationship/job")
+        elif "linked_short_comment.txt" in files:
+            errors.append("Stale unrelated Shorts comment must not be included in the current delivery")
     review_files = [name for name in files if name.startswith("review/") and name.endswith(".png")]
     if not any(name != "review/_review.png" for name in review_files):
         errors.append("Delivered full-resolution review frames missing")
@@ -863,7 +1254,20 @@ def main():
     mode.add_argument("--quality", action="store_true")
     mode.add_argument("--completion", action="store_true")
     mode.add_argument("--subtitles", action="store_true", help="SRT와 현재 시간표·실제 영상 자막 검수 증거 확인")
+    mode.add_argument("--longform-timing-report", action="store_true", help="기존 시간표와 최종 MP4의 시간만 보고; 품질 PASS 아님")
+    parser.add_argument("--combat-range", action="append", default=[], metavar="START_CUE:END_CUE",
+                        help="검토자가 선택한 전투 cue 포괄 구간; 여러 번 지정 가능, 시간 보고 모드 전용")
     args = parser.parse_args()
+    if args.combat_range and not args.longform_timing_report:
+        parser.error("--combat-range requires --longform-timing-report")
+    if args.longform_timing_report:
+        from longform_reporting import timing_report_from_episode
+        try:
+            report = timing_report_from_episode(args.episode, args.combat_range)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            parser.error(str(exc))
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        return
     if args.subtitles:
         base = Path(args.episode).resolve().parent
         errors = []
@@ -881,6 +1285,11 @@ def main():
         cfg = None
     for warning in text_warnings(cfg):
         print('경고 (내용 검토):', warning)
+    if isinstance(cfg, dict) and cfg.get('format') == 'longform':
+        from longform_reporting import longform_guidance
+        for key, document in longform_guidance(Path(__file__).parent)['documents'].items():
+            print('롱폼 내용 검토 지침:', document['path'], '' if document['available'] else '(파일 없음)')
+        print('전체·전투 예상 시간과 인과·원전 검토는 해당 지침으로 확인합니다. 약 3분은 고정 합격 기준이 아닙니다.')
     if isinstance(cfg, dict) and cfg.get('production_profile') == DETAIL_PROFILE:
         print('추상 표현 검사는 제한된 문자열 경고입니다. 경고 유무는 내용의 합격·불합격 판정이 아닙니다.')
     if errors:

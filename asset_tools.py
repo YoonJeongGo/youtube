@@ -13,14 +13,24 @@ import shutil
 
 from PIL import Image, ImageDraw, ImageOps
 
-from episode_core import ADDITIONAL_EDGE_IMAGE_NAMES, IMAGE_NAMES, SETUP_IMAGE_NAMES, atomic_json, load_json, sha256_file
+from image_review_contract import generation_metadata, prepare_prompt, review_template
+
+from episode_core import (ADDITIONAL_EDGE_IMAGE_NAMES, IMAGE_NAMES, SETUP_IMAGE_NAMES, atomic_json,
+                          load_json, sha256_file, image_names, is_longform, safe_child, video_spec)
 
 
 def now():
     return datetime.now(timezone.utc).isoformat()
 
 
-def image_target(name):
+def image_target(name, cfg=None):
+    if is_longform(cfg or {}):
+        if name not in image_names(cfg):
+            raise ValueError('Longform assets must be declared in the current episode: ' + name)
+        if name in {cfg[who].get('image', who + '.png') for who in ('a', 'b')}:
+            return 1024, 1024
+        spec = video_spec(cfg)
+        return spec['width'], spec['height']
     supported = tuple(dict.fromkeys((*IMAGE_NAMES, *SETUP_IMAGE_NAMES, *ADDITIONAL_EDGE_IMAGE_NAMES,
                                     'cliffhanger.png', 'sword_clash.png')))
     if name not in supported:
@@ -28,14 +38,36 @@ def image_target(name):
     return (1024, 1024) if name in ("a.png", "b.png") else (1024, 1536)
 
 
+def logical_asset_ids(name, cfg):
+    """Stable storyboard identities keep rename operations inside retry history."""
+    if not is_longform(cfg or {}):
+        return []
+    identities = []
+    if name == cfg.get('thumb', 'thumb.png'):
+        identities.append('thumbnail')
+    identities.extend('portrait:' + who for who in ('a', 'b')
+                      if name == cfg[who].get('image', who + '.png'))
+    identities.extend('cut:' + cut['id'] for cut in cfg['cuts'] if cut['image'] == name)
+    return sorted(set(identities))
+
+
 def normalize_asset(source, destination, *, prompt, references=(), generation_version=1,
-                    generator="unrecorded", replace=False):
+                    generator="unrecorded", replace=False, episode_cfg=None, episode_base=None):
     """Proportional contain + padding only. Source and replaced versions are kept.
 
     Calling this function documents a transform; it never certifies that the
     transform preserves the intended composition. Review remains UNREVIEWED.
     """
     source, destination = Path(source).resolve(), Path(destination).resolve()
+    records_root = Path(episode_base).resolve() if episode_base else destination.parent
+    asset_name = destination.relative_to(records_root).as_posix()
+    if is_longform(episode_cfg or {}):
+        from longform_profile import longform_production_errors
+        errors = longform_production_errors(episode_cfg, records_root)
+        if errors:
+            raise ValueError('\n'.join(errors))
+        if safe_child(records_root, asset_name).resolve() != destination:
+            raise ValueError('Asset destination must stay inside its episode')
     if source == destination:
         raise ValueError("The generated original and fixed destination must be different paths")
     if not source.is_file():
@@ -46,16 +78,18 @@ def normalize_asset(source, destination, *, prompt, references=(), generation_ve
         raise ValueError("An image permits initial generation plus three revisions (versions 1~4)")
     if destination.exists() and not replace:
         raise FileExistsError("An asset already exists; an explicit replacement is required: " + str(destination))
-    target = image_target(destination.name)
-    records_path = destination.parent / "generation_records.json"
+    target = image_target(asset_name if episode_cfg else destination.name, episode_cfg)
+    records_path = records_root / "generation_records.json"
     records = load_json(records_path) if records_path.exists() else {"schema_version": 1, "assets": []}
-    prior = [item for item in records["assets"] if item["file"] == destination.name]
+    identities = logical_asset_ids(asset_name, episode_cfg)
+    prior = [item for item in records['assets']
+             if item['file'] == asset_name or set(identities).intersection(item.get('asset_ids', []))]
     if prior and generation_version != max(item["generation_version"] for item in prior) + 1:
         raise ValueError("The next generation_version must advance the stored image history by one")
     references_info = [{"path": str(Path(ref).resolve()), "sha256": sha256_file(ref)} for ref in references]
     source_hash = sha256_file(source)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    originals = destination.parent / "revisions" / "generation_originals"
+    originals = records_root / "revisions" / "generation_originals"
     originals.mkdir(parents=True, exist_ok=True)
     original = originals / f"{destination.stem}_v{generation_version}_{source_hash[:12]}{source.suffix.lower()}"
     if not original.exists():
@@ -63,7 +97,7 @@ def normalize_asset(source, destination, *, prompt, references=(), generation_ve
     old_hash = None
     if destination.exists():
         old_hash = sha256_file(destination)
-        old = destination.parent / "revisions" / f"{destination.stem}_replaced_{old_hash[:12]}.png"
+        old = records_root / "revisions" / f"{destination.stem}_replaced_{old_hash[:12]}.png"
         if not old.exists():
             shutil.copy2(destination, old)
     with Image.open(source) as opened:
@@ -82,16 +116,19 @@ def normalize_asset(source, destination, *, prompt, references=(), generation_ve
     letterboxed = contained.size != target
     transform = "letterbox" if letterboxed else "none" if before == target else "proportional_resize"
     record = {
-        "file": destination.name, "sha256": sha256_file(destination), "generation_version": generation_version,
+        "file": asset_name, "sha256": sha256_file(destination), "generation_version": generation_version,
         "saved_at": now(), "generator": generator, "prompt": prompt, "references": references_info,
         "source_path": str(source), "source_sha256": source_hash,
-        "preserved_original": str(original.relative_to(destination.parent)), "replaced_sha256": old_hash,
+        "preserved_original": str(original.relative_to(records_root)), "replaced_sha256": old_hash,
         "source_size": list(before), "output_size": list(target), "contained_size": list(contained.size),
         "padding_left_top": padding, "transform": transform,
         "review_status": "UNREVIEWED", "needs_composition_review": True,
         "warning": "Aspect ratio differed: proportional letterboxing was applied; inspect framing before acceptance."
         if letterboxed else "Inspect the saved image and its final video framing; file conversion is not visual approval.",
     }
+    record.update(generation_metadata(prompt))
+    if identities:
+        record['asset_ids'] = identities
     records["assets"].append(record)
     atomic_json(records_path, records)
     return record
@@ -153,6 +190,14 @@ def build_review_views(image_path, regions, output_dir=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
+    prepared = sub.add_parser("prepare-prompt", help="Append shared action/anatomy guidance before image generation")
+    prepared.add_argument("--prompt-file", required=True)
+    prepared.add_argument("--output", required=True, help="New complete prompt; no overwrite")
+    template = sub.add_parser("review-template", help="Unreviewed current-hash draft for new or reused images")
+    template.add_argument("image")
+    template.add_argument("--episode", required=True)
+    template.add_argument("--views-manifest")
+    template.add_argument("--output", required=True, help="New draft; preserve existing image_review.json")
     normal = sub.add_parser("save")
     normal.add_argument("source")
     normal.add_argument("destination")
@@ -161,15 +206,32 @@ def main():
     normal.add_argument("--version", type=int, default=1)
     normal.add_argument("--generator", default="unrecorded")
     normal.add_argument("--replace", action="store_true")
+    normal.add_argument("--episode", help="Longform episode.json for declared horizontal assets and approval gate")
     review = sub.add_parser("review-views")
     review.add_argument("image")
     review.add_argument("--regions-json", help="JSON object of observed face/hand/weapon boxes")
     review.add_argument("--output-dir")
     args = parser.parse_args()
-    if args.command == "save":
+    if args.command in ("prepare-prompt", "review-template"):
+        output = Path(args.output)
+        if output.exists():
+            raise FileExistsError("Existing prompt/review evidence is preserved: " + str(output))
+        if args.command == "prepare-prompt":
+            value = prepare_prompt(Path(args.prompt_file).read_text(encoding="utf-8-sig"))
+        else:
+            draft = review_template(Path(args.episode).resolve().parent, args.image, args.views_manifest)
+            value = json.dumps(draft, ensure_ascii=False, indent=2) + "\n"
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with output.open("x", encoding="utf-8", newline="\n") as handle:
+            handle.write(value)
+        result = {"file": str(output.resolve()), "sha256": sha256_file(output),
+                  "status": "PREPARED_NOT_GENERATED" if args.command == "prepare-prompt" else "UNREVIEWED"}
+    elif args.command == "save":
         result = normalize_asset(args.source, args.destination, prompt=Path(args.prompt_file).read_text(encoding="utf-8-sig"),
                                  references=args.reference, generation_version=args.version,
-                                 generator=args.generator, replace=args.replace)
+                                 generator=args.generator, replace=args.replace,
+                                 episode_cfg=load_json(args.episode) if args.episode else None,
+                                 episode_base=Path(args.episode).resolve().parent if args.episode else None)
     else:
         result = build_review_views(args.image, load_json(args.regions_json) if args.regions_json else {}, args.output_dir)
     print(json.dumps(result, ensure_ascii=False, indent=2))

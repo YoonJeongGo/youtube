@@ -1,0 +1,17 @@
+.venv/
+.asr-venv/
+.review-client-venv/
+.audio-review-venv/
+.audio-transformers-venv/
+.audio-tools/
+.models/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+tmp/
+*.part
+state/*.lock
+.delivery.lock
+.cache/
+전달본/
+보관/

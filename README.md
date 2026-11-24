@@ -1,62 +1,150 @@
-# GitHub 공유 제작 시스템
+# 숏폼·롱폼 제작 자료
 
-[공유 저장소](https://github.com/YoonJeongGo/youtube)는 쇼츠 제작 코드·규칙·검사를 보존합니다. [아카이브 목록](archives/catalog.json)과 [GitHub Releases](https://github.com/YoonJeongGo/youtube/releases)에서 영상 ZIP의 버전·파일 크기·SHA-256·검수 상태를 확인합니다. 소스 checkout에는 실제 에피소드, 모델, 가상환경, 전체 채팅 기록과 인증정보를 넣지 않습니다. 원격 보관은 영상 품질 PASS나 유튜브 게시를 뜻하지 않습니다.
+[숏폼 18편](shorts/README.md) · [롱폼 2편](longform/README.md) · [공통 시스템·작업 이력](archives/2026-11-24/README.md) · [전체 보관 목록](archives/catalog.json)
 
-## 처음 설치하거나 다른 채팅에서 이어가기
+2026-11-24 현재 작업본을 형식별로 구분해 보관했습니다. 영상·자막·썸네일은 편별 전달 ZIP, 그림·음성·대본·검수·수정 이력은 편집 원본 ZIP에 있습니다. 실제 전달 폴더의 이전 버전도 형식별 이력 묶음에 보관합니다.
 
-1. [AGENTS.md](AGENTS.md), [상세 제작 규칙](docs/production_rules.md), [공통 시스템](docs/shared_system.md), [결정 기록](docs/decision_log.md)를 읽습니다. 신규 기본은 `showdown_detail_v5`이며 기존 작업은 저장된 프로필·작업 ID·승인 범위를 유지합니다.
-2. 소스 루트에서 Python 가상환경과 직접 의존성을 준비합니다. FFmpeg/FFprobe와 한글 글꼴은 별도 설치가 필요합니다. 이 사본은 Python 3.14.4, edge-tts 7.3.1, Pillow 13.0.0인 기존 환경으로 검사했으며 다른 운영체제의 새 설치를 완료했다는 뜻은 아닙니다.
+큰 파일은 GitHub Releases에 있으며, 이 저장소에는 코드·제작 규칙·목록과 복원 도구를 둡니다. [복원 방법](archives/RESTORE.md)을 확인하세요. 기존 [2026-11-18 보관본](https://github.com/YoonJeongGo/youtube/releases/tag/archive-2026-11-18)도 유지했습니다.
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-ffmpeg -version
-ffprobe -version
-```
+현재 검수 상태는 편별 목록에 그대로 표시합니다. GitHub 보관과 영상 품질 검수는 별개입니다.
 
-3. **새 빈 작업장**이라면 아래 초기화를 한 번 실행할 수 있습니다. 기존 파일은 덮어쓰지 않습니다. 기존 편을 이어갈 목적이면 먼저 아카이브의 복원 범위를 확인하고 이력부터 복원합니다.
+## 2026-11-19 롱폼 서사 시스템 개정: 전체 9~15분·전투 약 3분
 
-```powershell
-@'
-import json
-from pathlib import Path
-for name in ('episodes', 'state'):
-    Path(name).mkdir(exist_ok=True)
-for name in ('queue.txt', 'done.txt'):
-    path = Path(name)
-    if not path.exists():
-        path.write_text('', encoding='utf-8')
-pool = Path('matchup_ideas.json')
-if not pool.exists():
-    pool.write_text(json.dumps({
-        'schema_version': 1,
-        'default_planning_profile': 'recognizable_story_v1',
-        'default_production_profile': 'showdown_detail_v5',
-        'aliases': {}, 'candidates': []
-    }, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-'@ | .\.venv\Scripts\python.exe -B -X utf8 -
-```
+롱폼은 [새 공용 규칙](docs/longform_production_rules.md) → [기획 프롬프트](docs/longform_planning_prompt.md) → [대본 검수 항목](docs/longform_script_review.md) 순서로 적용한다. [사용자 개정 원문](docs/requests/2026-11-19-longform-story-system-request.txt)을 보존했으며, 아래 이전 롱폼 지침과 충돌하면 이번 개정이 우선한다. 쇼츠 기준은 유지한다.
 
-빈 후보 풀은 제작할 원전·대본이 준비됐다는 뜻이 아닙니다. `state/project_state.json`은 상태 모듈이 실제 선택 작업 때 생성합니다. 소스 배포본에 실제 `queue.txt`, `done.txt`, 후보 풀 또는 작업 원장을 포함하지 않습니다. 이력 없는 새 작업장을 기존 프로젝트의 완전 복원본으로 취급하지 않습니다.
+- 실제 전체 **9~15분**, 전투는 **최종 편집 기준 약 3분을 기본 목표**로 함께 설계한다. 180초 강제·고정 비율·공방/이미지 개수·반복으로 시간 채우기를 금지한다.
+- **도입 → A·B 이해 → 한 인물의 진행 중인 행동 → 발단 → 갈등 전개 → 위기 → 결정적 충돌과 절정 → 결말·질문**으로 이어진다. 모든 장면은 정보·관계·위험·목표 상태·선택을 바꾸고, 필요한 관찰·행동·직접 대사를 구체적으로 보여 준다.
+- 공방의 결과가 다음 판단을 바꾸게 하며 원전 능력의 임의 제한·새 약점·억지 우세 교대를 금지한다. 결말 분위기는 고정하지 않되 중심 사건의 결과는 명확히 한다.
+- 전체 대본/전제·씬별 시간·전투 시작/끝/합계·공방표·이미지 대응·원전/창작 구분을 먼저 제출한다. 승인 후 이미지 전체 초안과 등장 순서 검토, 수정·재검수, 음성·자막·편집을 진행한다. 최종 전체/전투 실측과 남은 문제를 보고하고 사용자 전체 청취 전 음성은 승인 대기다.
+- 이번 시스템 갱신만으로 특정 편의 대본·미디어·승인 이력을 변경하거나 제작을 시작하지 않는다. 다른 채팅이 이미 숙지했다고 주장하지 않는다.
 
-4. 생성 없이 형식과 연결을 검사합니다. [v5_schema_example.json](v5_schema_example.json)은 테스트 fixture에서 가져온 **허구의 형식 예시**입니다. 원전·대본·제작 승인이나 실제 인물의 능력을 검증한 자료가 아니며 그대로 제작하지 않습니다. `episode_example.json`은 기존 v4 회귀 검사에 필요한 예시여서 v4로 보존합니다.
+# 대결 쇼츠·롱폼 제작 시스템
+
+2026-11-18부터 **쇼츠와 롱폼을 별도로 운영**한다. 신규 쇼츠의 기본 `showdown_detail_v5`와 기존 편의 프로필은 유지한다. 롱폼은 `format: longform`, `production_profile: showdown_story_long_v1`이며 전체 운영 기준은 [롱폼 공용 제작 규칙](docs/longform_production_rules.md)에 있다. [자동 기획](docs/automatic_planning.md), [공유 시스템](docs/shared_system.md), [결정 기록](docs/decision_log.md)도 함께 확인한다.
+
+- 롱폼: 최종 실제 540~900초, 1920×1080·30fps, H.264/yuv420p·AAC, 가변 씬/컷/cue/낭독 그룹, 중심 사건의 결과가 있는 이야기.
+- 공통: 기존 화풍·화자와 정지 그림, BGM·줌·이동·흔들림 기본 없음, 원전·판본·금지 기준, 대본·전제 승인, 실제 검수·수정 한도·해시, D 저장·전달.
+- 롱폼의 필수 기술 검사와 최종 음성 승인은 별개다. 기술·시각 준비 후 검수용 전달 → 사용자의 최종 MP4 전체 청취 승인 → 나머지 필수 조건·전달 확인 → COMPLETE다. 로컬 음성 모델은 선택이며 사용자 승인을 대신하지 않는다.
+- 아래 기존 제작 예제·고정 이미지/cue·세로 규격·승자 미정·썸네일·태그·음성 모델 완료 기준은 **쇼츠 경로**다. 롱폼에 그대로 적용하지 않는다. 생성·렌더 예제는 유효한 해당 대본·전제 제작 승인이 있을 때만 사용한다.
+- 이번 공용 시스템 구축은 특정 편 예약·실제 대본·이미지·TTS·영상 제작을 포함하지 않는다. 문서 저장과 mock/fixture 통과는 실제 9~15분 통합 생성·시각 검수·음성 청취 완료가 아니다.
+
+
+## 롱폼 실행 경로와 기록
+
+이 절은 **이후 실제 롱폼 제작 요청**의 사용 안내다. 이번 시스템 구축에서는 아래 선택·생성·합성·전달 명령을 실행하지 않는다. 모든 명령은 `D:\유튜브 자동 쇼츠 생성`에서 실행한다. 경로·ID 변수에는 실제 해당 작업의 값을 사용하고, 특정 인물·첫 작품·기본 줄거리는 저장하지 않는다.
+
+### 현행 기획·검수 지침과 전투 시간 보고 (2026-11-19)
+
+새 롱폼 기획 전에 아래 읽기 전용 명령으로 실제 공용 기획 프롬프트와 대본 검수 항목을 불러온다. 후보 선택 결과와 롱폼 대본 검사에도 같은 문서 경로가 표시된다. 명령 성공은 대본 내용의 품질 판정이 아니다.
 
 ```powershell
-.\.venv\Scripts\python.exe -B -X utf8 -m unittest tests.test_detail_profile tests.test_detail_integration -v
-.\.venv\Scripts\python.exe -B -X utf8 check_episode.py v5_schema_example.json --text-only
+.\run_python.ps1 plan_matchups.py longform-guidance
+
+# longformEpisode는 실제 해당 episode.json 경로
+# combatCueRange는 검토자가 대본을 읽고 정한 '시작cue:종료cue' 문자열
+.\run_python.ps1 check_episode.py $longformEpisode --longform-timing-report --combat-range $combatCueRange
 ```
 
-5. 기존 편을 재개하려면 [아카이브 목록](archives/catalog.json)에서 원하는 버전과 검수 상태·누락 범위를 확인한 뒤 해당 [Release](https://github.com/YoonJeongGo/youtube/releases)의 ZIP과 해시를 대조합니다. 현재 작업 파일 위에 바로 풀지 말고 별도 복원 폴더에서 `episodes/`, 후보/대기열/완료 이력, 작업 ID와 검수 해시의 일치 여부를 확인합니다. 완성본만 있는 ZIP은 소스와 작업 이력의 완전 복원본이 아닙니다. 미완료 편은 기존 ID로 이어가며 저장된 `NEEDS_REVIEW`나 음향 미확인을 임의로 PASS로 바꾸지 않습니다.
+여러 전투 구간은 `--combat-range`를 반복 지정한다. 양끝 cue를 포함하며 겹치는 시간은 한 번만 센다. 도입 재탕·긴 회상·반복 설명은 전투 합계에 부풀려 넣지 않는다. cue 중간에서 공방이 바뀌면 경계의 한계를 밝히고 필요한 대본/편집 경계를 조정한다.
 
-## 소스와 아카이브의 경계
+보고서는 기획 추정·현재 대본에 대응하는 시간표·최종 MP4 측정값을 구분한다. 구간 미지정은 미분류, 파일 미생성은 미측정이며 0초나 PASS로 바꾸지 않는다. 시간표 해시/현재 cue 순서를 확인하고 원본 경로·해시를 남기지만, 같은 길이라고 최종 영상과 시간표의 내용이 같다는 뜻은 아니다. 실제 영상 내용과 구간 대응을 검토한다. 전투 약 180초는 참고 목표이며 자동 합격 기준이 아니다. 전체 540~900초 및 기존 최종 검수 조건은 유지한다.
 
-- `archives/`에는 보관 목록·제목·검수 상태·크기·SHA-256·다운로드 링크를 둡니다. 큰 영상 ZIP은 Releases 첨부이며 소스 Git 이력에 넣지 않습니다.
-- 모델·분석 환경·서비스 인증은 별도 준비 대상입니다. 선택적 ASR·DNSMOS·Praat·Qwen 검사기의 소스를 보존했지만 모델이나 실행 바이너리를 제공하지 않습니다. 기본 requirements만 설치하면 모든 선택적 음향 도구가 실행된다는 뜻도 아닙니다.
-- Python은 파일·상태·TTS·합성을 담당하며 Codex의 원전 조사·내장 imagegen·실제 검수를 자동으로 대신 호출하는 무인 제작기가 아닙니다. 이미지·TTS·최종 합성은 전제와 전체 대본 승인 후 절차입니다. Gemini 금지와 유튜브 업로드 금지를 유지합니다.
-- 아래 기존 설명의 `planning/`, `backups/`, `docs/evidence/`, 개별 `episodes/` 경로는 원래 작업장의 이력·증거를 가리킵니다. 개인정보와 미디어가 포함될 수 있어 소스 checkout에는 생략했으며, 보존 여부와 복원 범위는 아카이브 목록을 확인합니다. 과거 편 한정 외부 서비스 승인은 이 공개 소스 사용자를 위한 새 전송 승인이 아닙니다.
-- 문서의 `<PROJECT_ROOT>`와 `<USER_HOME>`은 정제한 경로 자리표시자입니다. 실제 설치 위치로 바꿉니다. 기존 로컬 원본은 이 공개 사본 준비로 변경하지 않았습니다.
+### 기획과 재개
 
----
+```powershell
+.\run_python.ps1 plan_matchups.py status --format longform
+
+# 이후 제작 요청에 따라 조사한 후보가 준비됐을 때만 작업 선택/예약
+.\run_python.ps1 plan_matchups.py select --format longform
+
+# 지정 조합 또는 기존 사건을 이어 갈 때 실제 기록된 값을 전달
+.\run_python.ps1 plan_matchups.py select --format longform --matchup $matchup --story-id $storyId
+```
+
+- `--format`을 생략한 기존 명령은 쇼츠 경로를 유지한다. `--format longform`은 별도 `matchup_ideas_longform.json`, `queue_longform.txt`, `done_longform.txt`, `state/project_state_longform.json`, `episodes/longform/`을 사용한다. 이번 저장만으로 실제 작업을 예약하거나 이 파일들에 특정 후보를 넣지 않는다.
+- 롱폼 대기열/완료 목록은 `story_id<TAB>A vs B`로 사건을 구분한다. 같은 대진 쇼츠는 별도 형식이다. 재개는 기존 `job_id`, `story_id`, `episode_path`를 유지한다.
+- `select`에는 기존 `--count`, `--run-id`, `--new`, `--remake`도 연결되어 있다. 새 사건 요청과 재제작 요청을 구분하고, 이어 가는 실행은 같은 형식·run ID·편수·사건을 유지한다. `finish-run`, `set-status`도 `--format longform`을 사용한다. 명령을 실행하기 전에 현재 단계·잠금·승인 범위를 확인한다.
+- 롱폼 후보에는 정확한 형식/프로필, 안정된 `story_id`, 9항목 `story_plan`, 범위 안의 `planned_duration_seconds`를 기록한다. 이는 추정·계획이며 최종 MP4 실측 통과를 대신하지 않는다. 후보가 부족하면 `NEEDS_RESEARCH`를 따라 Codex가 조사·구성하고, 사용자에게 항목별로 정해 달라고 떠넘기지 않는다.
+- 같은 대진의 새 사건은 이전 사건과 다른 `narrative_signature` 및 실제 비교 검토 `narrative_review`의 `status`, `reviewed_at`, `differences`, `compared_story_ids`가 필요하다. 해시 차이만으로 서사의 실질적 차이를 입증하지 않는다.
+
+### 대본·매체 연결
+
+데이터 구조와 제작 승인 필드는 [롱폼 데이터 계약](docs/longform_production_rules.md#실제-데이터-계약과-제작-승인-연결)을 따른다. 씬/컷/cue/낭독 그룹을 독립 ID로 연결하며 모든 본문 cue 뒤 공통 `cta`를 정확히 한 번 포함한다. 실제 원전·창작 경계·인과·상태·이미지 수·재사용/신규 수·낭독 그룹 수를 기획과 함께 검토한다.
+
+```powershell
+# longformEpisode는 기존/채택 작업의 실제 episode.json 경로
+.\run_python.ps1 check_episode.py $longformEpisode --text-only
+.\run_python.ps1 make_voice.py $longformEpisode --plan-only
+```
+
+`--text-only`는 대본 구조 검사이고 `--plan-only`는 음성 설정 계획이다. 사실·자연스러운 문체·이미지 품질·실제 발화 길이가 검증된 것으로 보고하지 않는다. 승인 전 실제 이미지·TTS·렌더는 하지 않는다. 전체 대본·전제 승인 근거와 현재 해시를 `production_authorization.json`에 기록하며 유효한 승인 없이 매체 생성 경로를 진행하지 않는다.
+
+```powershell
+# 실제 전체 대본·전제 제작 승인 후에만 실행
+# 내장 imagegen으로 생성하고 직접 확인한 원본을 해당 컷에 비례 유지해 저장
+.\run_python.ps1 asset_tools.py save $generatedSource $assetDestination --episode $longformEpisode --prompt-file $promptFile --generator 'built-in image_gen'
+.\run_python.ps1 check_episode.py $longformEpisode
+.\run_python.ps1 make_voice.py $longformEpisode
+.\run_python.ps1 make_voice.py $longformEpisode --check
+.\run_python.ps1 make_vs.py $longformEpisode
+```
+
+- `asset_tools.py --episode`는 그 롱폼이 선언한 동적 이미지 목록을 사용한다. 인물 기준 그림은 1024×1024, 씬/컷/썸네일은 1920×1080에 비례 유지와 필요한 여백으로 저장하며 몸을 늘이지 않는다. 기존의 검수된 인물 기준은 기존 크기·해시로 재사용할 수 있고 실제 컷에서 사용할 때도 비율을 보존해 화면을 확인한다. 저장 성공은 실제 원본 전체·손/관절/무기·동작·크롭 검수 PASS가 아니다. 기존 쇼츠 자산 규격은 유지한다.
+- 렌더는 형식별 설정을 선택한다. 쇼츠의 `render_settings.json` 세로 좌표를 롱폼 가로 화면에 복사하지 않는다. 필요한 가로 레이아웃 조정은 `render_settings.json`의 `longform` 영역에서 관리한다.
+- 기존 묶음 TTS·WordBoundary·PCM·자막/SRT·동일 시간표를 재사용한다. 전체 누적 샘플 기준 시간과 프레임 정렬을 검증하고, 각 그룹의 반올림 오차를 누적하지 않는다. 540~900초 범위는 모든 구간을 포함한 최종 MP4로 다시 확인한다.
+
+### 챕터·연계 쇼츠·썸네일
+
+- 선택 `chapters` 항목마다 `title`과 `cue_id`/`cut_id`/`scene_id` 중 한 기준을 지정하면 실제 최종 시간표의 그 시작 위치에서 타임스탬프를 계산한다. 여러 씬을 한 챕터로 묶을 수 있다. 지정하지 않으면 씬 전환과 씬의 의미 있는 `title` 또는 `objective`에서 만들며, 설명 파일에는 실제 계산값을 기록한다.
+- 선택 `planning.related_short`에는 실제 기존 쇼츠 작업 ID·경로·`continuation`/`new_event` 구분·판본/연속성 검토·질문 유지/변경 이유·읽은 원전/인물 기준/에피소드 해시를 연결한다. 최종 완료 시에만 해당 관계에 맞는 `linked_short_comment.txt` 초안을 전달한다. 실제 URL이 없으면 `[롱폼 영상 링크]`를 유지하며 게시·댓글 등록은 하지 않는다.
+- `cfg.thumb`의 실제 파일을 전달 썸네일로 사용한다. 별도 `upload_thumbnail.png`를 쓰면 그 현재 검수에도 `full_observations`, `detail_observations`, `small_size_observations`, 미해결 문제 없는 `issues`와 원본/결과 해시가 필요하다. 원본 썸네일을 확인했다는 사실로 다른 대체 썸네일을 통과시키지 않는다.
+
+### 롱폼 음성 기록과 검수용 전달
+
+별도 음성 승인 서비스를 만들지 않고 기존 `audio_review.json`, `qa_signoffs.json`, `qa_report.md`, `manifest.json`을 재사용한다. 기존 상위 `audio_review.input_hash`와 `pcm_sha256`도 현재 시간표·원본 PCM과 연결해 유지한다. 다음은 **실제 검수·실제 사용자 발언을 기록할 필드 안내**이며 그대로 복사해 PASS/승인을 만드는 양식이 아니다.
+
+- `audio_review.technical`: 실제 기술 검수의 `status`, 현재 `video_sha256`, `timeline_sha256`, 최종 MP4를 48kHz 스테레오 s16le PCM으로 실제 디코딩한 `final_audio_sha256`, `audio_timing_hash`, 실제 `asr_file/asr_sha256`, `checks`를 연결한다. 검사 항목은 `asr_alignment`, `starts_and_ends`, `group_boundaries`, `volume_clipping_silence`, `audio_specs`, `subtitle_srt_alignment`다. 각 항목은 구체적인 `observations`, 미해결 `issues`, 실제 `evidence` 파일/해시를 기록한다. ASR의 누락·중복·순서·오독 의심은 실제 근거와 대조하고 미해결 상태를 감추지 않는다.
+- `audio_review.user_approval`: 사용자가 **최종 MP4 전체를 듣고 승인한 경우만** `status: APPROVED`, `reviewer_kind: user`, `scope: full_final_mp4`, `full_listened: true`, 실제 `statement`, `approved_at`, 승인한 `video_sha256`, `final_audio_sha256`, `audio_timing_hash`를 기록한다. 특정 문구 입력을 강제하지 않고 문맥과 대상 버전·전체 청취 범위를 확인한다.
+- `qa_signoffs.audio`는 해당 사용자 승인 기록의 해시와 현재 영상/음성/시간표를 연결한다. Codex가 들었다고 기록하지 않는다. 로컬 음성 이해 모델은 선택적 보조이며 필수 실행이나 사용자 승인 대체 경로가 아니다.
+- 그림/자막/메타데이터만 바꿨고 실제 음성과 시간 배치가 동일하면 기존 사용자 승인 범위를 유지한다. 영상 해시가 달라진 경우 승인받은 이전 MP4를 보존하고 `approved_video_path`로 연결해 이전 영상 해시와 실제 디코딩 음성 및 현재 음성/시간 배치가 일치하는지 확인한다. 말·순서·발음·속도·음량·쉼·시간 배치가 달라지면 새 최종 버전의 전체 청취 승인이 필요하다.
+- 그림/자막만 바뀐 뒤 기존 ASR를 재사용할 때는 원래 분석 JSON을 그대로 보존하고 `technical.asr_reuse`에 `source_video_path`, `source_video_sha256`, `source_timeline_path`, `final_audio_sha256`, `audio_timing_hash`를 연결한다. 보존한 이전 MP4의 실제 디코딩 음성과 이전 시간표의 발화 내용·시간 배치가 현재와 같아야 한다. 과거 ASR의 영상/시간표 해시를 새 값으로 고쳐 재검사한 것처럼 기록하지 않는다. 현재 최종 MP4의 다른 기술·시각 검사는 별도로 유지한다.
+- 전제·대본 제작 승인, 파일 수령, 일부 구간 청취는 전체 MP4 음성 승인이 아니다. 미실행 필수 검사는 `NOT_RUN`, 사용자 전체 청취 승인 전은 `NEEDS_REVIEW`이며 일반적인 과거 수락 기록으로 우회하지 않는다.
+
+```powershell
+# 실제 기술·시각·자막 검사 근거를 기록한 뒤 현재 상태 검사
+.\run_python.ps1 check_episode.py $longformEpisode --subtitles
+.\run_python.ps1 check_episode.py $longformEpisode --quality
+
+# D의 storage_config.json 전달 경로로 검수용/완료 결과 전달
+.\run_python.ps1 deliver_episode.py $longformEpisode
+
+# 실제 전체 청취 승인과 필수 검사 통과 후 전달을 갱신하고 완료 확인
+.\run_python.ps1 deliver_episode.py $longformEpisode
+.\run_python.ps1 check_episode.py $longformEpisode --completion
+```
+
+최종 음성 승인 대기 중 `--quality`/`--completion` 통과를 꾸미지 않는다. 별도 review-ready 옵션은 없다. 전달 명령은 전체 검사 후 `LONGFORM_LISTENING_PENDING` 또는 `LONGFORM_LISTENING_STALE`만 남은 경우에 검수용 전달을 허용한다. 기술·이미지·자막 등 다른 실패는 롱폼 전달을 막는다. 파일 전달 성공과 COMPLETE는 별개다. 검수용 MP4를 먼저 제공한 뒤 그 버전 전체 청취를 기다린다. 명백한 기술 실패나 미검수 그림을 정상 검수대기 음성 승인만 남은 것처럼 설명하지 않는다. 사용자의 실제 승인 후 다시 전달·해시 확인하고 모든 조건이 충족된 편만 COMPLETE와 done에 반영한다. 게시·댓글 등록은 하지 않는다.
+
+이번 구축의 검증은 생성 없는 fixture/mock/형식 검사 범위다. 실제 9~15분 TTS·이미지·통합 렌더, 실제 시각 검수와 전체 음성 청취는 **NOT_RUN**이다. 실제 실행한 테스트와 남은 제한은 이번 보고를 확인한다. 문서의 명령 예시는 실행 성공 기록이 아니다.
+
+## 2026-11-18 실제 저장 위치 확정
+
+- 작업의 기준 경로는 `D:\유튜브 자동 쇼츠 생성`이다. 새 파일·설정·기획·수정·실행은 D 경로에서 한다.
+- C의 기존 프로젝트 루트와 `.git`는 실행 중인 앱의 잠금으로 유지했다. 하위 작업 폴더는 D로 연결한다. C 루트 전체가 junction인 것은 아니다.
+- C 루트의 작은 기존 코드/문서는 호환 잔여본이다. 이를 최신 기준으로 편집하거나 실행하지 말고 D의 실제 파일을 사용한다.
+- 기존 방을 계속 사용해도 작업 시작 시 D로 이동하고 D의 `AGENTS.md`와 `docs/production_rules.md`를 읽는다. Python 실행은 D의 `run_python.ps1`를 사용한다.
+- 실제 전달본은 `D:\유튜브 자동 쇼츠 생성\전달본`, 모델·임시 파일·캐시도 D를 사용한다. Codex 앱 자체의 대화 DB/설정/첨부는 이번 이전 대상이 아니다.
+
+## 최신 저장 위치: D드라이브 (2026-11-18)
+
+사용자가 “현재 작업을 로컬 D에 복제하고 C 용량을 비우며, 모든 저장을 D에, 폴더 이름은 C와 동일하게” 요청했다.
+
+- 정식 작업 폴더는 `D:\유튜브 자동 쇼츠 생성`이다. 코드·원본·이미지·음성·영상·검수·수정 이력·프로젝트 모델/가상환경·프로젝트 임시파일을 이 폴더에 저장한다.
+- 새 전달 기본은 `D:\유튜브 자동 쇼츠 생성\전달본\<해시태그까지 포함한 전체 유튜브 제목>`이다. 제목/태그/폴더명 일치 규칙은 유지하고 **기존 C 바탕화면 직접 전달 규칙보다 이번 지시를 우선한다.** `storage_config.json`이 이 위치를 강제한다. 전달 시 `--desktop-root`를 새로 지정하지 않는다.
+- 이전 C 프로젝트 경로와 이전한 기존 전달 경로는 D를 가리키는 Windows junction으로 호환한다. C 경로가 보여도 실제 파일은 D에 있다. junction을 중복 원본으로 취급해 재복사/재귀 삭제하지 않는다.
+- 실행 전에 `. .\environment.ps1`로 프로젝트 전용 임시/패키지 캐시 위치를 적용한다. 표준 실행은 `.\run_python.ps1 <스크립트> <인수...>`이다. C의 공용 Python/FFmpeg/Windows 글꼴은 읽기용 기존 설치이며 프로젝트 이전을 이유로 삭제하지 않는다.
+- 기존 에피소드의 원전·승인·검수 상태·프로필과 과거 절대경로 기록을 일괄 수정하지 않는다. 이전 내역은 `.local-work/migration-20261118/`에 보존한다. 검증 전 복사 상태는 이전 완료가 아니다.
+- Codex 앱 자체의 채팅 DB·설정·첨부 보관소는 이 프로젝트 폴더와 별개다. 이 지시로 앱 데이터 전체를 임의 이동하거나 삭제하지 않는다. 기존 F 드라이브 ZIP도 유지한다.
 
 # 대결 쇼츠 제작 작업장
 
@@ -120,7 +208,7 @@ ffprobe -version
 
 ## 대진 기획·선택
 
-신규 기획 기본은 `recognizable_story_v1`이다. 알려진 인물, 두 인물의 특징이 맞물리는 가상 장면, 같은 사건의 A 강점과 B 대응 근거, 원전 근거가 있는 떡밥 하나와 주관적 3항목 점수(합계 12/15 이상)를 기록한다. v4 이하 후보의 반대 조건 기록은 보존한다. [기획 프로필과 검증 규칙](docs/automatic_planning.md), [과거 검토한 10개 기획안](planning/matchup_plans_20261116.md), [과거 검증용 JSON](planning/matchup_plans_20261116.json)을 참고한다. 기획 10개 작성은 제작 예약이 아니며 기존 진행 편의 형식과 검수 상태는 유지한다.
+신규 기획 기본은 `recognizable_story_v1`이다. 알려진 인물, 두 인물의 특징이 맞물리는 가상 장면, 같은 사건의 A 강점과 B 대응 근거, 원전 근거가 있는 떡밥 하나와 주관적 3항목 점수(합계 12/15 이상)를 기록한다. v4 이하 후보의 반대 조건 기록은 보존한다. [기획 프로필과 검증 규칙](docs/automatic_planning.md), [과거 검토한 10개 기획안](archives/2026-11-24/README.md), [과거 검증용 JSON](archives/2026-11-24/README.md)을 참고한다. 기획 10개 작성은 제작 예약이 아니며 기존 진행 편의 형식과 검수 상태는 유지한다.
 
 선택 우선순위는 사용자 지정 → 처리 가능한 대기열 순서 → 원전을 조사한 새 후보이다. “새 대진” 요청은 기존 이력과 중복되지 않는 후보를 고른다. 기본 1편, 최대 5편의 **시도**만 허용하며 실패·검수대기도 시도에 포함한다.
 

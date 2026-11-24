@@ -48,6 +48,54 @@ class DetailProfileTests(unittest.TestCase):
     def setUp(self):
         self.cfg = detail_fixture()
 
+    def test_dialogue_is_explicit_and_limited_to_selected_v5_cues(self):
+        self.cfg['a']['intro'][1] = '잠깐만. 한 판 더!'
+        self.assertTrue(any('a.intro.1: use one sentence' in e for e in errors_for(self.cfg)))
+        self.cfg['dialogue_cues'] = ['a.intro.1']
+        self.assertEqual([], errors_for(self.cfg))
+        self.cfg['b']['intro'][1] = '그만해. 비켜!'
+        self.assertTrue(any('b.intro.1: use one sentence' in e for e in errors_for(self.cfg)))
+        self.cfg['production_profile'] = core.SHOWDOWN_PROFILE
+        self.assertTrue(any('dialogue_cues is supported only' in e for e in errors_for(self.cfg)))
+        self.assertTrue(any('a.intro.1: use one sentence' in e for e in errors_for(self.cfg)))
+
+    def test_dialogue_rejects_three_sentences_and_preserves_final_punctuation(self):
+        self.cfg['dialogue_cues'] = ['a.intro.1', 'reason', 'question']
+        self.cfg['a']['intro'][1] = '잠깐만. 비켜. 한 판 더!'
+        self.assertTrue(any('at most two sentences' in e for e in errors_for(self.cfg)))
+        self.cfg['a']['intro'][1] = '잠깐만. 한 판 더'
+        self.assertTrue(any('a.intro.1: sentence must end' in e for e in errors_for(self.cfg)))
+        self.cfg['a']['intro'][1] = '잠깐만. 한 판 더!'
+        self.cfg['reason'] = '날이 밝았다. 도망치려 하지만'
+        self.assertEqual([], errors_for(self.cfg))  # Existing clause-ending allowance.
+        self.cfg['question'] = '날이 밝았다. 누가 벗어납니까.'
+        self.assertTrue(any('question: question must end' in e for e in errors_for(self.cfg)))
+
+    def test_dialogue_ids_must_be_a_unique_list_of_known_strings(self):
+        for value in ('a.intro.1', None, {}, ['a.intro.1', 'a.intro.1'],
+                      ['unknown'], [1], [['a.intro.1']]):
+            with self.subTest(value=value):
+                self.cfg['dialogue_cues'] = value
+                self.assertTrue(any('dialogue_cues:' in e for e in errors_for(self.cfg)))
+        self.cfg['dialogue_cues'] = []
+        self.assertEqual([], errors_for(self.cfg))
+
+    def test_dialogue_keeps_nfc_limits_and_fixed_two_cue_structure(self):
+        for path, cue, limit, ending in ((['a', 'intro', 1], 'a.intro.1', 48, '.'),
+                                        (['hook'], 'hook', 40, '?'),
+                                        (['question'], 'question', 36, '?')):
+            with self.subTest(cue=cue):
+                cfg = copy.deepcopy(self.cfg)
+                cfg['dialogue_cues'] = [cue]
+                at_limit = '가. ' + '나' * (limit - 4) + ending
+                set_path(cfg, path, unicodedata.normalize('NFD', at_limit))
+                self.assertEqual([], errors_for(cfg))
+                set_path(cfg, path, at_limit[:-1] + '나' + ending)
+                self.assertTrue(any(f'at most {limit} NFC characters' in e for e in errors_for(cfg)))
+        self.cfg['dialogue_cues'] = ['a.intro.1']
+        self.cfg['a']['intro'].append('한 번 더!')
+        self.assertTrue(any('a.intro: exactly 2' in e for e in errors_for(self.cfg)))
+
     def test_new_default_does_not_rewrite_saved_profiles(self):
         self.assertEqual('showdown_detail_v5', core.DEFAULT_PRODUCTION_PROFILE)
         self.assertIn(core.DETAIL_PROFILE, core.STRUCTURED_PROFILES)

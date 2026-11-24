@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "delivery_root": "전달본",
+  "require_delivery_root": true
+}

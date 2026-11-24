@@ -1,3 +1,9 @@
+# 현재 숏폼·롱폼 보관
+
+[숏폼](../shorts/README.md) · [롱폼](../longform/README.md) · [2026-11-24 전체 목록](2026-11-24/README.md) · [복원 안내](RESTORE.md)
+
+아래는 유지한 2026-11-18 과거 보관 목록입니다.
+
 # 쇼츠 아카이브
 
 [GitHub Release](https://github.com/YoonJeongGo/youtube/releases/tag/archive-2026-11-18) · [기계 판독 목록](catalog.json)

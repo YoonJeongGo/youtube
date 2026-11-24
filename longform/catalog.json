@@ -1,0 +1,505 @@
+{
+  "format": "longform",
+  "groups": [
+    {
+      "name": "longform-001-editing-20261124",
+      "kind": "editing",
+      "info": {
+        "format": "longform",
+        "id": "001",
+        "folder": "episodes/longform/001_홍길동_vs_로빈 후드_granary_escape_return_20261118",
+        "title": "홍길동 vs 로빈 후드 - 분신으로 달아나면 활로 막을 수 있을까",
+        "saved_status": "NEEDS_REVIEW",
+        "quality_status_upgraded": false,
+        "current_delivery_title": "홍길동 VS 로빈 후드 — 그자를 넘겨라"
+      },
+      "files": 6885,
+      "unique_files": 5027,
+      "source_bytes": 18632066357,
+      "archives": [
+        {
+          "asset_name": "longform-001-editing-20261124-part001.zip",
+          "title": "홍길동 vs 로빈 후드 - 분신으로 달아나면 활로 막을 수 있을까",
+          "kind": "editing",
+          "episode": "001",
+          "format": "longform",
+          "bytes": 831277703,
+          "sha256": "dda6c6bebb46afe838849bf5b1706e4a023c061b43734ed62a7d76c5f1397062",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-001-editing-20261124-part001.zip",
+          "upload_verified": true
+        },
+        {
+          "asset_name": "longform-001-editing-20261124-part002.zip",
+          "title": "홍길동 vs 로빈 후드 - 분신으로 달아나면 활로 막을 수 있을까",
+          "kind": "editing",
+          "episode": "001",
+          "format": "longform",
+          "bytes": 886047565,
+          "sha256": "7eff6694d1157e87bf334e000434581bb5b36c00bfb03cd7690c00ac60dcba07",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-001-editing-20261124-part002.zip",
+          "upload_verified": true
+        },
+        {
+          "asset_name": "longform-001-editing-20261124-part003.zip",
+          "title": "홍길동 vs 로빈 후드 - 분신으로 달아나면 활로 막을 수 있을까",
+          "kind": "editing",
+          "episode": "001",
+          "format": "longform",
+          "bytes": 897692909,
+          "sha256": "1dd692a1bd5a07a6b242ffcde0116ba63ac9088536a2a4da27da275f8b955cc6",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-001-editing-20261124-part003.zip",
+          "upload_verified": true
+        },
+        {
+          "asset_name": "longform-001-editing-20261124-part004.zip",
+          "title": "홍길동 vs 로빈 후드 - 분신으로 달아나면 활로 막을 수 있을까",
+          "kind": "editing",
+          "episode": "001",
+          "format": "longform",
+          "bytes": 898981664,
+          "sha256": "098dea4d457e75c071c24451c6df477a9bd37f3102a95e0d17ce0bf3dee0015f",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-001-editing-20261124-part004.zip",
+          "upload_verified": true
+        },
+        {
+          "asset_name": "longform-001-editing-20261124-part005.zip",
+          "title": "홍길동 vs 로빈 후드 - 분신으로 달아나면 활로 막을 수 있을까",
+          "kind": "editing",
+          "episode": "001",
+          "format": "longform",
+          "bytes": 899797263,
+          "sha256": "c54ed84e128e11d08ddad0abfe1bd92590909aeee70ae60d294c9c833e7b5955",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-001-editing-20261124-part005.zip",
+          "upload_verified": true
+        },
+        {
+          "asset_name": "longform-001-editing-20261124-part006.zip",
+          "title": "홍길동 vs 로빈 후드 - 분신으로 달아나면 활로 막을 수 있을까",
+          "kind": "editing",
+          "episode": "001",
+          "format": "longform",
+          "bytes": 899151311,
+          "sha256": "47cae5af30a47e5ff93ebb62041da259e9c667ed790dbc99c5819465f1dbef29",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-001-editing-20261124-part006.zip",
+          "upload_verified": true
+        },
+        {
+          "asset_name": "longform-001-editing-20261124-part007.zip",
+          "title": "홍길동 vs 로빈 후드 - 분신으로 달아나면 활로 막을 수 있을까",
+          "kind": "editing",
+          "episode": "001",
+          "format": "longform",
+          "bytes": 899694426,
+          "sha256": "3d4ff9be0d17a9a216e922bd1c0e81ec434ac07a61a24968a908b02df9897296",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-001-editing-20261124-part007.zip",
+          "upload_verified": true
+        },
+        {
+          "asset_name": "longform-001-editing-20261124-part008.zip",
+          "title": "홍길동 vs 로빈 후드 - 분신으로 달아나면 활로 막을 수 있을까",
+          "kind": "editing",
+          "episode": "001",
+          "format": "longform",
+          "bytes": 899270102,
+          "sha256": "5d4b8f8b90aa784425f5288fc2b8648a988658aae4055e8a0fc7aa7f5b3a037e",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-001-editing-20261124-part008.zip",
+          "upload_verified": true
+        },
+        {
+          "asset_name": "longform-001-editing-20261124-part009.zip",
+          "title": "홍길동 vs 로빈 후드 - 분신으로 달아나면 활로 막을 수 있을까",
+          "kind": "editing",
+          "episode": "001",
+          "format": "longform",
+          "bytes": 899896634,
+          "sha256": "e91cd817caba996aaf60afcf7f6379bed22ee896e6d250eac2d3c40e2c055de3",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-001-editing-20261124-part009.zip",
+          "upload_verified": true
+        },
+        {
+          "asset_name": "longform-001-editing-20261124-part010.zip",
+          "title": "홍길동 vs 로빈 후드 - 분신으로 달아나면 활로 막을 수 있을까",
+          "kind": "editing",
+          "episode": "001",
+          "format": "longform",
+          "bytes": 897243522,
+          "sha256": "9440953a422fb0ff59232cb78d3ae061ca6e9260a0e7858d2d6037c091672485",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-001-editing-20261124-part010.zip",
+          "upload_verified": true
+        },
+        {
+          "asset_name": "longform-001-editing-20261124-part011.zip",
+          "title": "홍길동 vs 로빈 후드 - 분신으로 달아나면 활로 막을 수 있을까",
+          "kind": "editing",
+          "episode": "001",
+          "format": "longform",
+          "bytes": 898938181,
+          "sha256": "dcc50bcf4b4f907953c89f66763c9241ba45c173d6a4ba7910c26369bad68df3",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-001-editing-20261124-part011.zip",
+          "upload_verified": true
+        },
+        {
+          "asset_name": "longform-001-editing-20261124-part012.zip",
+          "title": "홍길동 vs 로빈 후드 - 분신으로 달아나면 활로 막을 수 있을까",
+          "kind": "editing",
+          "episode": "001",
+          "format": "longform",
+          "bytes": 900041307,
+          "sha256": "f3b302a9aea4d6094d517c6be9095b48f67ed652cb3f01188be91c0af8d17165",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-001-editing-20261124-part012.zip",
+          "upload_verified": true
+        },
+        {
+          "asset_name": "longform-001-editing-20261124-part013.zip",
+          "title": "홍길동 vs 로빈 후드 - 분신으로 달아나면 활로 막을 수 있을까",
+          "kind": "editing",
+          "episode": "001",
+          "format": "longform",
+          "bytes": 897760443,
+          "sha256": "8b42538c65b543cd34b27d711a338433601aad30dca5216304f6c8eb7d8b7b64",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-001-editing-20261124-part013.zip",
+          "upload_verified": true
+        },
+        {
+          "asset_name": "longform-001-editing-20261124-part014.zip",
+          "title": "홍길동 vs 로빈 후드 - 분신으로 달아나면 활로 막을 수 있을까",
+          "kind": "editing",
+          "episode": "001",
+          "format": "longform",
+          "bytes": 892780542,
+          "sha256": "7980e3e681ce8c8d2423e98ce062052dfbab5ca55a87d52dc98cdd1840403fef",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-001-editing-20261124-part014.zip",
+          "upload_verified": true
+        },
+        {
+          "asset_name": "longform-001-editing-20261124-part015.zip",
+          "title": "홍길동 vs 로빈 후드 - 분신으로 달아나면 활로 막을 수 있을까",
+          "kind": "editing",
+          "episode": "001",
+          "format": "longform",
+          "bytes": 799477578,
+          "sha256": "498fc79fd6be23b8a0759867433650a9be56387ea62ecf9e7993b70193dc1bb5",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-001-editing-20261124-part015.zip",
+          "upload_verified": true
+        },
+        {
+          "asset_name": "longform-001-editing-20261124-part016.zip",
+          "title": "홍길동 vs 로빈 후드 - 분신으로 달아나면 활로 막을 수 있을까",
+          "kind": "editing",
+          "episode": "001",
+          "format": "longform",
+          "bytes": 133017440,
+          "sha256": "5d5435cd47598bd342678564ea6ec99cf4198187ffe74750e339f2f9dfa09518",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-001-editing-20261124-part016.zip",
+          "upload_verified": true
+        }
+      ]
+    },
+    {
+      "name": "longform-002-delivery-20261124",
+      "kind": "delivery",
+      "info": {
+        "format": "longform",
+        "id": "002",
+        "folder": "episodes/longform/002_척준경_vs_미야모토 무사시_second_sound_20261120",
+        "title": "척준경 VS 미야모토 무사시 — 방패 뒤에서 두 번째 소리가 났다",
+        "saved_status": "미기록",
+        "quality_status_upgraded": false
+      },
+      "files": 4,
+      "unique_files": 4,
+      "source_bytes": 132838684,
+      "archives": [
+        {
+          "asset_name": "longform-002-delivery-20261124-part001.zip",
+          "title": "척준경 VS 미야모토 무사시 — 방패 뒤에서 두 번째 소리가 났다",
+          "kind": "delivery",
+          "episode": "002",
+          "format": "longform",
+          "bytes": 132722133,
+          "sha256": "10dd9f0eb353fdd7a95fcffd4ac18aee44b91654d58fc36430f0150a8805117f",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-002-delivery-20261124-part001.zip",
+          "upload_verified": true
+        }
+      ]
+    },
+    {
+      "name": "longform-002-editing-20261124",
+      "kind": "editing",
+      "info": {
+        "format": "longform",
+        "id": "002",
+        "folder": "episodes/longform/002_척준경_vs_미야모토 무사시_second_sound_20261120",
+        "title": "척준경 VS 미야모토 무사시 — 방패 뒤에서 두 번째 소리가 났다",
+        "saved_status": "미기록",
+        "quality_status_upgraded": false,
+        "current_delivery_title": "척준경 VS 미야모토 무사시 — 방패 뒤에서 두 번째 소리가 났다"
+      },
+      "files": 14791,
+      "unique_files": 5376,
+      "source_bytes": 37968884614,
+      "archives": [
+        {
+          "asset_name": "longform-002-editing-20261124-part001.zip",
+          "title": "척준경 VS 미야모토 무사시 — 방패 뒤에서 두 번째 소리가 났다",
+          "kind": "editing",
+          "episode": "002",
+          "format": "longform",
+          "bytes": 837807521,
+          "sha256": "782d41962a958048cdf64065c93ab7911570df4a5b202f9c98a4e75e573f86c1",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-002-editing-20261124-part001.zip",
+          "upload_verified": true
+        },
+        {
+          "asset_name": "longform-002-editing-20261124-part002.zip",
+          "title": "척준경 VS 미야모토 무사시 — 방패 뒤에서 두 번째 소리가 났다",
+          "kind": "editing",
+          "episode": "002",
+          "format": "longform",
+          "bytes": 897284082,
+          "sha256": "340bb1bf8fce0059e79eca08a35aa52a3b8c923215a8bb89412c433d2e0735d4",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-002-editing-20261124-part002.zip",
+          "upload_verified": true
+        },
+        {
+          "asset_name": "longform-002-editing-20261124-part003.zip",
+          "title": "척준경 VS 미야모토 무사시 — 방패 뒤에서 두 번째 소리가 났다",
+          "kind": "editing",
+          "episode": "002",
+          "format": "longform",
+          "bytes": 897827630,
+          "sha256": "976a3e60ec5e9aa039c1ada7b08762b7b47dba36f61178d99d859865e08a3efd",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-002-editing-20261124-part003.zip",
+          "upload_verified": true
+        },
+        {
+          "asset_name": "longform-002-editing-20261124-part004.zip",
+          "title": "척준경 VS 미야모토 무사시 — 방패 뒤에서 두 번째 소리가 났다",
+          "kind": "editing",
+          "episode": "002",
+          "format": "longform",
+          "bytes": 899291623,
+          "sha256": "bf2a7b96f13ed582594dddc1a303ac9d53fbdfee3d3f66b90c919cf32fe2065f",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-002-editing-20261124-part004.zip",
+          "upload_verified": true
+        },
+        {
+          "asset_name": "longform-002-editing-20261124-part005.zip",
+          "title": "척준경 VS 미야모토 무사시 — 방패 뒤에서 두 번째 소리가 났다",
+          "kind": "editing",
+          "episode": "002",
+          "format": "longform",
+          "bytes": 897901178,
+          "sha256": "aa812a2931f3f24145ca155ecd07bbbed2c16dcaad9d80cb1dfac74b6d52b7e5",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-002-editing-20261124-part005.zip",
+          "upload_verified": true
+        },
+        {
+          "asset_name": "longform-002-editing-20261124-part006.zip",
+          "title": "척준경 VS 미야모토 무사시 — 방패 뒤에서 두 번째 소리가 났다",
+          "kind": "editing",
+          "episode": "002",
+          "format": "longform",
+          "bytes": 898570593,
+          "sha256": "a2eb2215a5ae82cd6a57ff152e16e005f223882fe299a4c25c9781a913ff2af1",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-002-editing-20261124-part006.zip",
+          "upload_verified": true
+        },
+        {
+          "asset_name": "longform-002-editing-20261124-part007.zip",
+          "title": "척준경 VS 미야모토 무사시 — 방패 뒤에서 두 번째 소리가 났다",
+          "kind": "editing",
+          "episode": "002",
+          "format": "longform",
+          "bytes": 898550303,
+          "sha256": "2caee7610b9e5467bb7989e5b749bf43981f00edc45261ad922762ae71814a76",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-002-editing-20261124-part007.zip",
+          "upload_verified": true
+        },
+        {
+          "asset_name": "longform-002-editing-20261124-part008.zip",
+          "title": "척준경 VS 미야모토 무사시 — 방패 뒤에서 두 번째 소리가 났다",
+          "kind": "editing",
+          "episode": "002",
+          "format": "longform",
+          "bytes": 898841948,
+          "sha256": "c6254bf64a6f432910f274161f439efe7ea245761950d68bcb966e35424b488f",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-002-editing-20261124-part008.zip",
+          "upload_verified": true
+        },
+        {
+          "asset_name": "longform-002-editing-20261124-part009.zip",
+          "title": "척준경 VS 미야모토 무사시 — 방패 뒤에서 두 번째 소리가 났다",
+          "kind": "editing",
+          "episode": "002",
+          "format": "longform",
+          "bytes": 884671132,
+          "sha256": "7a34bded4d4289d5bf1070bc4046d882d177df236294029733c10c68f1299ee0",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-002-editing-20261124-part009.zip",
+          "upload_verified": true
+        },
+        {
+          "asset_name": "longform-002-editing-20261124-part010.zip",
+          "title": "척준경 VS 미야모토 무사시 — 방패 뒤에서 두 번째 소리가 났다",
+          "kind": "editing",
+          "episode": "002",
+          "format": "longform",
+          "bytes": 786359331,
+          "sha256": "98387f3ff3d8138231c8f3799468afce60debb3edd0cd8558a5025fcbe4180ca",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-002-editing-20261124-part010.zip",
+          "upload_verified": true
+        },
+        {
+          "asset_name": "longform-002-editing-20261124-part011.zip",
+          "title": "척준경 VS 미야모토 무사시 — 방패 뒤에서 두 번째 소리가 났다",
+          "kind": "editing",
+          "episode": "002",
+          "format": "longform",
+          "bytes": 869275709,
+          "sha256": "07eee5e8aec16ee4098a282fb64e26717dc98ec250d8c36eb87f42f8fcfdcd75",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-002-editing-20261124-part011.zip",
+          "upload_verified": true
+        },
+        {
+          "asset_name": "longform-002-editing-20261124-part012.zip",
+          "title": "척준경 VS 미야모토 무사시 — 방패 뒤에서 두 번째 소리가 났다",
+          "kind": "editing",
+          "episode": "002",
+          "format": "longform",
+          "bytes": 898399070,
+          "sha256": "3cc0b3bbeb41d93fe341355261f8eeed091ba62ae73042202af1d5c434c7fdfa",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-002-editing-20261124-part012.zip",
+          "upload_verified": true
+        },
+        {
+          "asset_name": "longform-002-editing-20261124-part013.zip",
+          "title": "척준경 VS 미야모토 무사시 — 방패 뒤에서 두 번째 소리가 났다",
+          "kind": "editing",
+          "episode": "002",
+          "format": "longform",
+          "bytes": 829082570,
+          "sha256": "bd961740eb84f72c69dc9c1ad47def5d72729dec32db78882373ad82f01f1629",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-002-editing-20261124-part013.zip",
+          "upload_verified": true
+        },
+        {
+          "asset_name": "longform-002-editing-20261124-part014.zip",
+          "title": "척준경 VS 미야모토 무사시 — 방패 뒤에서 두 번째 소리가 났다",
+          "kind": "editing",
+          "episode": "002",
+          "format": "longform",
+          "bytes": 423159154,
+          "sha256": "0a3606e5b4c945d65b5675e993ef20c4aefc265767ffb29a29f640fca08e1335",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-002-editing-20261124-part014.zip",
+          "upload_verified": true
+        }
+      ]
+    },
+    {
+      "name": "longform-delivered-history-20261124",
+      "kind": "delivered_history",
+      "info": {
+        "format": "longform",
+        "title": "실제 전달 폴더와 전달 수정 이력"
+      },
+      "files": 830,
+      "unique_files": 663,
+      "source_bytes": 2019814093,
+      "archives": [
+        {
+          "asset_name": "longform-delivered-history-20261124-part001.zip",
+          "title": "실제 전달 폴더와 전달 수정 이력",
+          "kind": "delivered_history",
+          "episode": null,
+          "format": "longform",
+          "bytes": 797196101,
+          "sha256": "a6936f8fde6af0f8a2a8094ad3c87d81c1d2883e3862f859d7d0f3b90ac7cc84",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-delivered-history-20261124-part001.zip",
+          "upload_verified": true
+        },
+        {
+          "asset_name": "longform-delivered-history-20261124-part002.zip",
+          "title": "실제 전달 폴더와 전달 수정 이력",
+          "kind": "delivered_history",
+          "episode": null,
+          "format": "longform",
+          "bytes": 894378660,
+          "sha256": "3a138928b9ad144621d4340ec62f4aaaef494c65f192783648ec6c6323291267",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-delivered-history-20261124-part002.zip",
+          "upload_verified": true
+        },
+        {
+          "asset_name": "longform-delivered-history-20261124-part003.zip",
+          "title": "실제 전달 폴더와 전달 수정 이력",
+          "kind": "delivered_history",
+          "episode": null,
+          "format": "longform",
+          "bytes": 33776072,
+          "sha256": "c6025410e8e2e1f2f5a4539e6d0e67e984f59f037cb622bbf2960d294b39b057",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-delivered-history-20261124-part003.zip",
+          "upload_verified": true
+        }
+      ]
+    },
+    {
+      "name": "longform-001-delivered-latest-20261124",
+      "kind": "delivery",
+      "info": {
+        "format": "longform",
+        "id": "001",
+        "folder": "episodes/longform/001_홍길동_vs_로빈 후드_granary_escape_return_20261118",
+        "title": "홍길동 VS 로빈 후드 — 그자를 넘겨라",
+        "saved_status": "NEEDS_REVIEW",
+        "quality_status_upgraded": false,
+        "delivered_title": "홍길동 VS 로빈 후드 — 그자를 넘겨라",
+        "delivery_source": "전달본/홍길동 VS 로빈 후드 — 그자를 넘겨라/롱폼 영상"
+      },
+      "files": 15,
+      "unique_files": 15,
+      "source_bytes": 126736812,
+      "archives": [
+        {
+          "asset_name": "longform-001-delivered-latest-20261124-part001.zip",
+          "title": "홍길동 VS 로빈 후드 — 그자를 넘겨라",
+          "kind": "delivery",
+          "episode": "001",
+          "format": "longform",
+          "bytes": 126720135,
+          "sha256": "57a5a3f67241076a5c54b491c1abb8c5dd6f9133038f8d8cbcda44c780456fb9",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-001-delivered-latest-20261124-part001.zip",
+          "upload_verified": true
+        }
+      ]
+    },
+    {
+      "name": "longform-002-delivered-latest-20261124",
+      "kind": "delivery",
+      "info": {
+        "format": "longform",
+        "id": "002",
+        "folder": "episodes/longform/002_척준경_vs_미야모토 무사시_second_sound_20261120",
+        "title": "척준경 VS 미야모토 무사시 — 방패 뒤에서 두 번째 소리가 났다",
+        "saved_status": "미기록",
+        "quality_status_upgraded": false,
+        "delivered_title": "척준경 VS 미야모토 무사시 — 방패 뒤에서 두 번째 소리가 났다",
+        "delivery_source": "전달본/척준경 VS 미야모토 무사시 — 방패 뒤에서 두 번째 소리가 났다"
+      },
+      "files": 14,
+      "unique_files": 14,
+      "source_bytes": 136597026,
+      "archives": [
+        {
+          "asset_name": "longform-002-delivered-latest-20261124-part001.zip",
+          "title": "척준경 VS 미야모토 무사시 — 방패 뒤에서 두 번째 소리가 났다",
+          "kind": "delivery",
+          "episode": "002",
+          "format": "longform",
+          "bytes": 136536260,
+          "sha256": "281b610256499887cdd5cc4adfc98b92a14ea1c8cba8d529f774facbd0801c1e",
+          "download_url": "https://github.com/YoonJeongGo/youtube/releases/download/untagged-9de4f074f910d7187042/longform-002-delivered-latest-20261124-part001.zip",
+          "upload_verified": true
+        }
+      ]
+    }
+  ]
+}

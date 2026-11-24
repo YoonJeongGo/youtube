@@ -16,7 +16,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from project_state import ProjectState, atomic_json, load_json, now, read_text
-from episode_core import DEFAULT_PRODUCTION_PROFILE, DETAIL_PROFILE, STRUCTURED_PROFILES
+from episode_core import DEFAULT_PRODUCTION_PROFILE, DETAIL_PROFILE, LONGFORM_PROFILE, STRUCTURED_PROFILES
 
 CRITERIA = ("clear_pairing_reason", "contrast_or_commonality", "primary_sources", "both_strength_conditions", "distinct_visual_scenes", "understandable_in_20_45s", "variety_from_history")
 REQUIRED_PLAN = ("premise", "core_question", "hook", "title", "pinned_comment")
@@ -89,6 +89,8 @@ def parse_pair(line):
 
 
 def candidate_errors(idea):
+    if idea.get("format") == "longform" or idea.get("production_profile") == LONGFORM_PROFILE:
+        return longform_candidate_errors(idea)
     errors = []
     if idea.get("format") != "one_on_one":
         return ["EXPANSION_HOLD: three-way/army formats are not supported; preserve the original participants"]
@@ -285,9 +287,15 @@ def scan_existing(root, state, registry):
         state.import_job({"job_id": manifest.get("job_id") or "legacy_" + hashlib.sha256(rel.encode()).hexdigest()[:16], "number": number, "pair_key": key, "candidate_id": cfg.get("matchup_idea_id"), "names": names, "person_ids": [registry.resolve(x) for x in names], "episode_path": rel, "source": "existing_folder", "original": None, "created_at": manifest.get("created_at", now()), "updated_at": now(), "status": status, "history": [{"status": status, "at": now(), "reason": "Imported existing work without reclassifying its QA"}], "attempt_count": 0})
 
 
-def select_matchups(root, requested=None, count=1, force_new=False, remake=False, run_id=None):
+def select_matchups(root, requested=None, count=1, force_new=False, remake=False, run_id=None, media_format="shorts", story_id=None):
     root = Path(root).resolve()
-    with ProjectState(root) as state:
+    if media_format not in {"shorts", "longform"}:
+        raise ValueError("Unsupported production format: " + str(media_format))
+    if media_format == "shorts" and story_id is not None:
+        raise ValueError("story_id is only supported for longform")
+    with ProjectState(root, media_format=media_format) as state:
+        if media_format == "longform":
+            return _select_longform_locked(root, state, requested, count, force_new, remake, run_id, story_id)
         return _select_matchups_locked(root, state, requested, count, force_new, remake, run_id)
 
 
@@ -501,29 +509,251 @@ def _select_matchups_locked(root, state, requested=None, count=1, force_new=Fals
     return result
 
 
+
+LONGFORM_PLAN_FIELDS = ("central_event", "goals", "motivation", "information", "setting",
+                        "abilities", "progression", "outcome", "visualization")
+LONGFORM_CRITERIA = ("clear_pairing_reason", "contrast_or_commonality", "primary_sources",
+                    "character_specificity", "complete_event", "visual_feasibility", "variety_from_history")
+
+
+def narrative_signature(idea):
+    """Only narrative content defines identity; title and marketing never do."""
+    plan = idea.get("story_plan", {})
+    content = {key: plan.get(key) for key in LONGFORM_PLAN_FIELDS if key != "visualization"}
+    return hashlib.sha256(json.dumps(content, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+
+
+def longform_candidate_errors(idea):
+    errors = []
+    def need(condition, message):
+        if not condition:
+            errors.append("longform planning: " + message)
+    need(idea.get("format") == "longform" and idea.get("production_profile") == LONGFORM_PROFILE,
+         "format/profile must explicitly match longform/showdown_story_long_v1")
+    need(idea.get("matchup_format", "one_on_one") == "one_on_one", "only two central individuals are supported")
+    need(bool(re.fullmatch(r"[A-Za-z0-9_-]{1,100}", str(idea.get("story_id", "")))), "stable story_id required")
+    need(bool(idea.get("id")), "candidate id required")
+    eligibility = idea.get("eligibility", {})
+    need(eligibility.get("status") == "ALLOWED" and eligibility.get("reason") and eligibility.get("evidence"),
+         "eligibility requires read evidence and an explicit allowed reason")
+    for who in ("a", "b"):
+        person = idea.get(who, {})
+        for key in ("id", "name", "version"):
+            need(isinstance(person.get(key), str) and person[key].strip(), who + "." + key + " required")
+    for key in REQUIRED_PLAN:
+        need(isinstance(idea.get(key), str) and idea[key].strip(), key + " required")
+    plan = idea.get("story_plan", {})
+    for key in LONGFORM_PLAN_FIELDS:
+        need(bool(plan.get(key)) if isinstance(plan, dict) else False, "story_plan." + key + " required")
+    for key in LONGFORM_CRITERIA:
+        item = idea.get("criteria", {}).get(key, {})
+        need(isinstance(item, dict) and item.get("pass") is True and item.get("reason"), "record a reason for " + key)
+    sources = idea.get("sources", [])
+    need(isinstance(sources, list) and bool(sources), "read primary sources required")
+    for item in sources if isinstance(sources, list) else []:
+        need(isinstance(item, dict) and item.get("read") is True and all(item.get(k) for k in ("url", "work", "locator", "checked_at", "summary")),
+             "each source needs read body, URL, edition/work, locator, date and support")
+    unresolved = idea.get("unresolved")
+    need(isinstance(unresolved, list) and all(isinstance(x, dict) and x.get("blocking") is False for x in unresolved),
+         "unresolved research must be explicit without blocking questions")
+    seconds = idea.get("planned_duration_seconds")
+    need(isinstance(seconds, (int, float)) and not isinstance(seconds, bool) and 540 <= seconds <= 900,
+         "planned duration must be 540..900 seconds, explicitly a plan not a measurement")
+    return errors
+
+
+
+def scan_longform_existing(root, state, registry):
+    """Recover existing longform identity without manufacturing completion evidence."""
+    tracked = {(root / job["episode_path"]).resolve(): job for job in state.data["jobs"]}
+    for folder in sorted((root / "episodes" / "longform").glob("*")):
+        if not folder.is_dir():
+            continue
+        path = folder / "episode.json"
+        if path.resolve() in tracked:
+            continue
+        cfg = load_json(path, {})
+        manifest = load_json(folder / "manifest.json", {})
+        if not cfg or cfg.get("format") != "longform" or cfg.get("production_profile") != LONGFORM_PROFILE:
+            raise ValueError("Untracked longform folder must be reconciled before reservation: " + str(folder))
+        sid = cfg.get("story_id")
+        job_id = manifest.get("job_id") or cfg.get("job_id")
+        if not sid or not job_id or (manifest.get("job_id") and cfg.get("job_id") and manifest["job_id"] != cfg["job_id"]):
+            raise ValueError("Existing longform needs consistent story/job IDs before resume")
+        names = [cfg.get(who, {}).get("name") for who in ("a", "b")]
+        if not all(names):
+            raise ValueError("Existing longform participant identities are missing")
+        status = manifest.get("status", "NEEDS_REVIEW")
+        if status not in {"IN_PROGRESS", "NEEDS_REVIEW", "FAILED", "SKIPPED", "COMPLETE"}:
+            status = "NEEDS_REVIEW"
+        key = registry.pair_key(*names)
+        if any(j["job_id"] == job_id or (j.get("story_id") == sid and j["status"] != "COMPLETE" and status != "COMPLETE") for j in state.data["jobs"]):
+            raise ValueError("Conflicting longform job/story folders must be reconciled without duplication")
+        prefix = folder.name.split("_", 1)[0]
+        state.import_job({"job_id": job_id, "number": int(prefix) if prefix.isdigit() else 0,
+            "format": "longform", "story_id": sid, "pair_key": key, "narrative_signature": narrative_signature(cfg),
+            "candidate_id": cfg.get("planning", {}).get("idea_id"), "names": names,
+            "person_ids": [registry.resolve(name) for name in names], "episode_path": str(path.relative_to(root)),
+            "source": "existing_folder", "original": None, "created_at": manifest.get("created_at", now()),
+            "updated_at": now(), "status": status, "history": [{"status": status, "at": now(),
+            "reason": "Imported existing longform identity without reclassifying its QA"}], "attempt_count": 0})
+
+
+def _select_longform_locked(root, state, requested=None, count=1, force_new=False, remake=False, run_id=None, story_id=None):
+    """Independent queue/ledger; research is supplied by the active Codex session."""
+    pool_path = root / "matchup_ideas_longform.json"
+    pool = load_json(pool_path, {"schema_version": 1, "aliases": {}, "candidates": []})
+    if pool.get("schema_version") != 1:
+        raise ValueError("Unsupported longform idea pool schema")
+    if pool.get("default_production_profile", LONGFORM_PROFILE) != LONGFORM_PROFILE:
+        raise ValueError("Longform pool cannot fall back to a Shorts profile")
+    registry = IdentityRegistry(pool)
+    scan_longform_existing(root, state, registry)
+    done_stories = {}
+    for line in read_text(root / state.done_name).splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        parts = line.split("\t", 1)
+        if len(parts) != 2 or not parts[0].strip():
+            raise ValueError("Longform done history must be reconciled: expected story_id<TAB>A vs B")
+        sid, pair = parts
+        key = registry.line_key(pair)
+        if sid in done_stories and done_stories[sid] != key:
+            raise ValueError("Longform done story_id conflicts across pairs")
+        done_stories[sid] = key
+    ideas = pool.get("candidates", [])
+    result = {"format": "longform", "status": "NEEDS_RESEARCH", "selections": [], "skipped": [], "research_needed": [], "held": []}
+    from longform_reporting import longform_guidance
+    result["guidance"] = longform_guidance(root)
+    explicit = [requested] if isinstance(requested, str) else list(requested or [])
+    if force_new and explicit:
+        raise ValueError("Explicit matchups and force_new are mutually exclusive")
+    if story_id and len(explicit) > 1:
+        raise ValueError("One story_id cannot identify multiple requested pairs")
+    # A stable ID can resume a saved narrative even if its pool entry was removed.
+    candidates = list(ideas)
+    for job in state.data["jobs"]:
+        if not any(x.get("story_id") == job.get("story_id") for x in candidates):
+            saved = load_json(root / job["episode_path"], {})
+            if saved and isinstance(saved.get("planning", {}).get("candidate"), dict):
+                candidates.append(saved["planning"]["candidate"])
+    run_id = state.start_run(count, run_id)
+    result.update(run_id=run_id, attempt_limit=state.data["runs"][run_id]["limit"])
+    considered = set()
+    requests = []
+    if explicit:
+        for line in explicit:
+            try:
+                key = registry.line_key(line)
+                matches = [x for x in candidates if registry.pair_key(x["a"]["id"], x["b"]["id"]) == key
+                           and (not story_id or x.get("story_id") == story_id)]
+                # Prefer the unfinished story, never silently choose a new plot on resume.
+                active_ids = {j.get("story_id") for j in state.jobs_for(key) if j["status"] != "COMPLETE"}
+                matches.sort(key=lambda x: x.get("story_id") not in active_ids)
+                requests.append((line, matches, "explicit"))
+            except (ValueError, KeyError) as exc:
+                result["held"].append({"original": line, "reason": str(exc)})
+    elif story_id:
+        requests.append((story_id, [x for x in candidates if x.get("story_id") == story_id], "explicit"))
+    else:
+        if not force_new:
+            for job in state.data["jobs"]:
+                if job["status"] in {"IN_PROGRESS", "NEEDS_REVIEW", "FAILED"}:
+                    requests.append((job["story_id"], [x for x in candidates if x.get("story_id") == job["story_id"]], "resume"))
+            for line in read_text(root / state.queue_name).splitlines():
+                if not line.strip() or line.lstrip().startswith("#"):
+                    continue
+                parts = line.split("\t", 1)
+                if len(parts) != 2:
+                    result["held"].append({"original": line, "reason": "Longform queue requires story_id<TAB>A vs B"})
+                    continue
+                sid, pair = parts
+                try:
+                    key = registry.line_key(pair)
+                    matches = [x for x in candidates if x.get("story_id") == sid and registry.pair_key(x["a"]["id"], x["b"]["id"]) == key]
+                    requests.append((line, matches, "queue"))
+                except (ValueError, KeyError) as exc:
+                    result["held"].append({"original": line, "reason": str(exc)})
+        existing_ids = {j.get("story_id") for j in state.data["jobs"]}
+        for idea in ideas:
+            if idea.get("story_id") not in existing_ids:
+                requests.append((idea.get("story_id", ""), [idea], "new"))
+    for original, available, source in requests:
+        if not state.remaining(run_id):
+            break
+        if source == "new" and any(x.get("source") in {"queue", "resume"} for x in result["research_needed"]):
+            continue
+        valid = [x for x in available if not longform_candidate_errors(x)]
+        if not valid:
+            result["research_needed"].append({"original": original, "source": source,
+                "reason": "; ".join(e for x in available for e in longform_candidate_errors(x)) or "Research this pair/story and complete the nine-item plan; do not ask the user to supply every missing detail"})
+            continue
+        idea = valid[0]
+        sid = idea["story_id"]
+        if sid in considered:
+            continue
+        considered.add(sid)
+        key = registry.pair_key(idea["a"]["id"], idea["b"]["id"])
+        if sid in done_stories:
+            if done_stories[sid] != key:
+                raise ValueError("Longform story_id conflicts with preserved done history")
+            if not remake:
+                result["skipped"].append({"story_id": sid, "pair_key": key, "reason": "Story already in longform done history; explicit remake required"})
+                continue
+        try:
+            job = state.reserve(run_id, idea, key, source, original, remake)
+        except (RuntimeError, ValueError) as exc:
+            result["skipped"].append({"story_id": sid, "pair_key": key, "reason": str(exc)})
+            continue
+        result["selections"].append({"format": "longform", "story_id": sid, "job_id": job["job_id"],
+            "candidate_id": idea["id"], "pair_key": key, "names": job["names"], "source": source,
+            "action": job["history"][-1]["action"], "episode_path": job["episode_path"], "plan": copy.deepcopy(idea)})
+        if idea in ideas:
+            idea.setdefault("adoptions", []).append({"job_id": job["job_id"], "run_id": run_id, "at": now()})
+    if result["selections"]:
+        atomic_json(pool_path, pool)
+        result["status"] = "SELECTED"
+    elif not state.remaining(run_id):
+        result["status"] = "ATTEMPT_LIMIT_REACHED"
+    result["attempts_used"] = len(state.data["runs"][run_id]["attempts"])
+    if state.remaining(run_id):
+        result["candidate_request"] = {"remaining_attempts": state.remaining(run_id),
+            "instruction": "Preserve requested people/theme/conditions. Resolve current story and queue first; otherwise research an eligible opponent or pair and create a character-driven new event with the full nine-item plan and script. Never reserve a title-only duplicate."}
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", default=".")
     sub = parser.add_subparsers(dest="command", required=True)
+    sub.add_parser("longform-guidance", help="Read current longform planning/review prompts without reserving a job")
     select = sub.add_parser("select")
     select.add_argument("--matchup", action="append")
     select.add_argument("--count", type=int, default=1)
     select.add_argument("--new", action="store_true")
     select.add_argument("--remake", action="store_true")
     select.add_argument("--run-id")
-    sub.add_parser("status")
+    select.add_argument("--format", dest="media_format", choices=["shorts", "longform"], default="shorts")
+    select.add_argument("--story-id")
+    summary = sub.add_parser("status")
+    summary.add_argument("--format", dest="media_format", choices=["shorts", "longform"], default="shorts")
     finish = sub.add_parser("finish-run")
     finish.add_argument("run_id")
+    finish.add_argument("--format", dest="media_format", choices=["shorts", "longform"], default="shorts")
     status = sub.add_parser("set-status")
     status.add_argument("job_id")
     status.add_argument("status", choices=["FAILED", "NEEDS_REVIEW", "SKIPPED"])
     status.add_argument("--reason", required=True)
+    status.add_argument("--format", dest="media_format", choices=["shorts", "longform"], default="shorts")
     args = parser.parse_args()
     root = Path(args.root).resolve()
-    if args.command == "select":
-        value = select_matchups(root, args.matchup, args.count, args.new, args.remake, args.run_id)
+    if args.command == "longform-guidance":
+        from longform_reporting import longform_guidance
+        value = longform_guidance(root, include_text=True)
+    elif args.command == "select":
+        value = select_matchups(root, args.matchup, args.count, args.new, args.remake, args.run_id, args.media_format, args.story_id)
     else:
-        with ProjectState(root) as state:
+        with ProjectState(root, media_format=args.media_format) as state:
             if args.command == "finish-run":
                 state.finish_run(args.run_id)
             elif args.command == "set-status":

@@ -94,15 +94,22 @@ def safe_component(value):
 class ProjectState:
     """Use as a context manager for every mutation, including completion."""
 
-    def __init__(self, root, pair_key_resolver=None):
+    def __init__(self, root, pair_key_resolver=None, media_format="shorts"):
         self.root = Path(root).resolve()
-        self.path = self.root / "state" / "project_state.json"
+        if media_format not in {"shorts", "longform"}:
+            raise ValueError("Unsupported production format: " + str(media_format))
+        self.media_format = media_format
+        suffix = "_longform" if media_format == "longform" else ""
+        self.path = self.root / "state" / ("project_state" + suffix + ".json")
+        self.lock_path = self.root / "state" / ("project" + suffix + ".lock")
+        self.queue_name = "queue" + suffix + ".txt"
+        self.done_name = "done" + suffix + ".txt"
         self.pair_key_resolver = pair_key_resolver
         self.data = None
         self._lock = None
 
     def __enter__(self):
-        self._lock = file_lock(self.root / "state" / "project.lock")
+        self._lock = file_lock(self.lock_path)
         self._lock.__enter__()
         try:
             self.data = load_json(self.path, {"schema_version": 1, "jobs": [], "runs": {}, "skipped": [], "pending_transaction": None})
@@ -127,12 +134,12 @@ class ProjectState:
         if not tx:
             return
         # Validate both destinations first; never overwrite an intervening edit.
-        for name in ("queue.txt", "done.txt"):
+        for name in (self.queue_name, self.done_name):
             item = tx[name]
             current = read_text(self.root / name)
             if digest_text(current) not in {item["before_hash"], digest_text(item["after"])}:
                 raise RuntimeError(f"Recovery conflict: {name} changed after interrupted transaction; preserve and reconcile it")
-        for name in ("queue.txt", "done.txt"):
+        for name in (self.queue_name, self.done_name):
             atomic_text(self.root / name, tx[name]["after"])
         self.data["pending_transaction"] = None
         self.save()
@@ -152,8 +159,9 @@ class ProjectState:
         self.data["runs"][run_id]["finished_at"] = now()
         self.save()
 
-    def jobs_for(self, pair_key):
-        return [job for job in self.data["jobs"] if job["pair_key"] == pair_key]
+    def jobs_for(self, pair_key, story_id=None):
+        return [job for job in self.data["jobs"] if job["pair_key"] == pair_key
+                and (story_id is None or job.get("story_id") == story_id)]
 
     def get_job(self, job_id):
         return next(job for job in self.data["jobs"] if job["job_id"] == job_id)
@@ -185,16 +193,39 @@ class ProjectState:
             raise RuntimeError("Run already finished")
         if not self.remaining(run_id):
             raise RuntimeError("Production attempt cap reached")
-        already = {self.get_job(jid)["pair_key"] for jid in run["attempts"]}
-        if pair_key in already:
+        story_id = candidate.get("story_id") if self.media_format == "longform" else None
+        if self.media_format == "longform" and (not isinstance(story_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", story_id)):
+            raise ValueError("Longform requires a stable safe story_id")
+        identity = lambda job: (job["pair_key"], job.get("story_id")) if self.media_format == "longform" else job["pair_key"]
+        wanted_identity = (pair_key, story_id) if self.media_format == "longform" else pair_key
+        already = {identity(self.get_job(jid)) for jid in run["attempts"]}
+        if wanted_identity in already:
             raise RuntimeError("This pair has already been attempted in this run")
-        existing = self.jobs_for(pair_key)
+        existing = self.jobs_for(pair_key, story_id)
+        if self.media_format == "longform":
+            # story_id is an identity, never a title-based duplicate escape.
+            collisions = [j for j in self.data["jobs"] if j.get("story_id") == story_id and j["pair_key"] != pair_key]
+            if collisions:
+                raise ValueError("story_id already belongs to another pair")
+            if not existing:
+                from plan_matchups import narrative_signature
+                signature = narrative_signature(candidate)
+                earlier = self.jobs_for(pair_key)
+                if earlier:
+                    review = candidate.get("narrative_review", {})
+                    compared = set(review.get("compared_story_ids", []))
+                    if (review.get("status") != "PASS" or not review.get("reviewed_at")
+                            or not review.get("differences")
+                            or not {j.get("story_id") for j in earlier}.issubset(compared)):
+                        raise ValueError("A new same-pair story needs recorded narrative differences against prior stories")
+                    if any(j.get("narrative_signature") == signature for j in earlier):
+                        raise ValueError("Same narrative cannot be reserved under a new title or story_id")
         resumable = [j for j in existing if j["status"] in {"FAILED", "NEEDS_REVIEW"}]
         active = [j for j in existing if j["status"] == "IN_PROGRESS"]
         completed = [j for j in existing if j["status"] == "COMPLETE"]
         if resume_job_id:
             job = self.get_job(resume_job_id)
-            if job["pair_key"] != pair_key or job["status"] == "COMPLETE":
+            if identity(job) != wanted_identity or job["status"] == "COMPLETE":
                 raise ValueError("Only the matching unfinished job can be resumed")
             if job["status"] == "IN_PROGRESS" and not self.data["runs"].get(job.get("run_id"), {}).get("finished_at"):
                 raise RuntimeError("Existing job is active; finish/interruption-record its prior run before resuming")
@@ -210,15 +241,19 @@ class ProjectState:
         else:
             if completed and not remake:
                 raise RuntimeError("Pair already COMPLETE; an explicit remake request is required")
-            episodes = self.root / "episodes"
-            episodes.mkdir(exist_ok=True)
+            episodes = self.root / "episodes" / "longform" if self.media_format == "longform" else self.root / "episodes"
+            episodes.mkdir(parents=True, exist_ok=True)
             numbers = [int(p.name.split("_", 1)[0]) for p in episodes.iterdir() if p.is_dir() and p.name.split("_", 1)[0].isdigit()]
             numbers += [j.get("number", 0) for j in self.data["jobs"]]
             number = max(numbers, default=0) + 1
             dirname = f"{number:03d}_{safe_component(candidate['a']['name'])}_vs_{safe_component(candidate['b']['name'])}"
+            if self.media_format == "longform":
+                dirname += "_" + safe_component(story_id)
             episode_dir = episodes / dirname
             episode_dir.mkdir()
             job = {"job_id": uuid.uuid4().hex, "number": number, "pair_key": pair_key, "candidate_id": candidate["id"], "names": [candidate["a"]["name"], candidate["b"]["name"]], "person_ids": [candidate["a"]["id"], candidate["b"]["id"]], "episode_path": str((episode_dir / "episode.json").relative_to(self.root)), "source": source, "original": original, "created_at": now(), "history": [], "remake_of": completed[-1]["job_id"] if completed else None}
+            if self.media_format == "longform":
+                job.update(format="longform", story_id=story_id, narrative_signature=narrative_signature(candidate))
             self.data["jobs"].append(job)
         job["status"] = "IN_PROGRESS"
         job["run_id"] = run_id
@@ -256,9 +291,11 @@ class ProjectState:
         if status != "COMPLETE":
             self.save()
             return
-        queue_before = read_text(self.root / "queue.txt")
-        done_before = read_text(self.root / "done.txt")
+        queue_before = read_text(self.root / self.queue_name)
+        done_before = read_text(self.root / self.done_name)
         def matches(line):
+            if self.media_format == "longform":
+                return line.split("\t", 1)[0].strip() == job.get("story_id")
             if self.pair_key_resolver:
                 try:
                     return self.pair_key_resolver(line) == job["pair_key"]
@@ -268,9 +305,9 @@ class ProjectState:
         kept = [line for line in queue_before.splitlines() if not matches(line)]
         done = done_before.splitlines()
         if not any(matches(line) for line in done):
-            done.append(" vs ".join(job["names"]))
+            done.append((job["story_id"] + "\t" if self.media_format == "longform" else "") + " vs ".join(job["names"]))
         queue_after = "\n".join(kept) + ("\n" if kept else "")
         done_after = "\n".join(done) + ("\n" if done else "")
-        self.data["pending_transaction"] = {"job_id": job_id, "queue.txt": {"before_hash": digest_text(queue_before), "after": queue_after}, "done.txt": {"before_hash": digest_text(done_before), "after": done_after}}
+        self.data["pending_transaction"] = {"job_id": job_id, self.queue_name: {"before_hash": digest_text(queue_before), "after": queue_after}, self.done_name: {"before_hash": digest_text(done_before), "after": done_after}}
         self.save()  # Durable COMPLETE + intended files before mutating either list.
         self.recover()

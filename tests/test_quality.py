@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -234,6 +235,93 @@ class QualityTests(unittest.TestCase):
         self.assertEqual(result["status"], "NEEDS_REVIEW")
         self.assertEqual(json.loads((target / "manifest.json").read_text(encoding="utf-8"))["status"], "NEEDS_REVIEW")
         self.assertFalse((self.root / "검수대기").exists())
+
+    def storage_fixture(self):
+        atomic_json(self.root / "storage_config.json", {
+            "schema_version": 1, "delivery_root": "전달본", "require_delivery_root": True})
+
+    def test_configured_storage_uses_exact_title_and_preserves_review_status(self):
+        self.complete_delivery_fixture()
+        self.storage_fixture()
+        with patch("deliver_episode.validate_quality", return_value=[]), patch("check_episode.validate_quality", return_value=[]):
+            result = deliver(self.path, update_state=False)
+            self.assertEqual(result["status"], "COMPLETE")
+            self.assertEqual(Path(result["delivery_path"]), self.root / "전달본" / "시험 제목")
+            self.assertEqual(validate_completion(self.path), [])
+        with patch("deliver_episode.validate_quality", return_value=["AUDIO_REVIEW_REQUIRED"]):
+            pending = deliver(self.path, update_state=False)
+        self.assertEqual(pending["status"], "NEEDS_REVIEW")
+        self.assertEqual(pending["delivery_path"], result["delivery_path"])
+        manifest = json.loads((self.base / "manifest.json").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["delivery"]["layout"], "title_root")
+        self.assertEqual(manifest["delivery"]["output_root"], str(self.root / "전달본"))
+        self.assertFalse((self.root / "검수대기").exists())
+
+    def test_required_storage_rejects_conflicting_explicit_destinations_before_writing(self):
+        self.complete_delivery_fixture()
+        self.storage_fixture()
+        before = (self.base / "manifest.json").read_bytes()
+        for option in ("destination", "desktop_root", "output_root"):
+            with self.subTest(option=option), self.assertRaisesRegex(ValueError, "conflicts with required"):
+                deliver(self.path, update_state=False, **{option: self.root})
+        self.assertEqual(before, (self.base / "manifest.json").read_bytes())
+        self.assertFalse((self.root / "전달본").exists())
+
+    def test_output_root_works_without_config_and_matches_required_config(self):
+        self.complete_delivery_fixture()
+        output = self.root / "전달본"
+        output.mkdir()
+        with patch("deliver_episode.validate_quality", return_value=[]), patch("check_episode.validate_quality", return_value=[]):
+            first = deliver(self.path, output_root=output, update_state=False)
+            self.assertEqual(first["status"], "COMPLETE")
+            self.assertEqual(validate_completion(self.path), [])
+            self.storage_fixture()
+            second = deliver(self.path, output_root=output, update_state=False)
+            self.assertEqual(first["delivery_path"], second["delivery_path"])
+            self.assertEqual(validate_completion(self.path), [])
+
+    def test_configured_failed_completion_stays_in_title_folder(self):
+        self.complete_delivery_fixture()
+        self.storage_fixture()
+        with patch("deliver_episode.validate_quality", return_value=[]), patch("deliver_episode.validate_completion", return_value=["review changed"]):
+            result = deliver(self.path, update_state=False)
+        self.assertEqual(result["status"], "NEEDS_REVIEW")
+        self.assertEqual(Path(result["delivery_path"]), self.root / "전달본" / "시험 제목")
+
+    def test_storage_config_rejects_escaping_or_absolute_directory(self):
+        self.complete_delivery_fixture()
+        for relative in ("../outside", str(self.root / "전달본"), "."):
+            with self.subTest(relative=relative):
+                atomic_json(self.root / "storage_config.json", {
+                    "schema_version": 1, "delivery_root": relative, "require_delivery_root": True})
+                with self.assertRaises(ValueError):
+                    deliver(self.path, update_state=False)
+
+    def test_completion_accepts_existing_junction_alias_and_rejects_missing_episode(self):
+        self.complete_delivery_fixture()
+        alias = self.root / "old_episode_location"
+        if os.name == "nt":
+            import _winapi
+            _winapi.CreateJunction(str(self.base), str(alias))
+            self.addCleanup(lambda: alias.rmdir() if alias.exists() else None)
+        else:
+            alias.symlink_to(self.base, target_is_directory=True)
+            self.addCleanup(lambda: alias.unlink() if alias.exists() else None)
+        with patch("deliver_episode.validate_quality", return_value=[]), patch("check_episode.validate_quality", return_value=[]):
+            result = deliver(self.path, self.root, update_state=False)
+            target = Path(result["delivery_path"])
+            delivered = json.loads((target / "manifest.json").read_text(encoding="utf-8"))
+            manifest = json.loads((self.base / "manifest.json").read_text(encoding="utf-8"))
+            for recorded, expected_valid in ((alias / "episode.json", True), (alias / "missing.json", False)):
+                delivered["working_episode"] = str(recorded)
+                atomic_json(target / "manifest.json", delivered)
+                manifest["delivery"]["manifest_sha256"] = sha256_file(target / "manifest.json")
+                atomic_json(self.base / "manifest.json", manifest)
+                errors = validate_completion(self.path)
+                if expected_valid:
+                    self.assertEqual(errors, [])
+                else:
+                    self.assertTrue(any("working episode" in error for error in errors))
 
     def test_delivery_copies_indexed_native_frames_and_validates_current_sources(self):
         self.complete_delivery_fixture()

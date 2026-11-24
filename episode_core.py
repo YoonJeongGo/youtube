@@ -15,6 +15,7 @@ IMAGE_NAMES = ('thumb.png', 'a.png', 'a_1.png', 'a_2.png', 'a_atk.png',
 SETUP_PROFILE = 'setup_story_v3'
 SHOWDOWN_PROFILE = 'showdown_story_v4'
 DETAIL_PROFILE = 'showdown_detail_v5'
+LONGFORM_PROFILE = 'showdown_story_long_v1'
 # Only creation code should use this default. Reading an existing episode never
 # fills in or replaces its saved production_profile.
 DEFAULT_PRODUCTION_PROFILE = DETAIL_PROFILE
@@ -22,6 +23,38 @@ STRUCTURED_PROFILES = (SETUP_PROFILE, SHOWDOWN_PROFILE, DETAIL_PROFILE)
 SETUP_IMAGE_NAMES = ('thumb.png', 'scene.png', 'a.png', 'a_1.png', 'a_2.png', 'a_atk.png',
                      'b.png', 'b_1.png', 'b_2.png', 'b_atk.png')
 ADDITIONAL_EDGE_IMAGE_NAMES = ('a_atk_2.png', 'b_atk_2.png')
+USER_VERBATIM_IMAGE_NAMES = ('thumb.png', 'a.png', 'b.png', 'scene.png', 'a_2.png',
+                             'a_atk.png', 'b_atk.png', 'b_2.png', 'cliffhanger.png')
+
+
+def is_user_verbatim(cfg):
+    # Explicit episode opt-in only. Existing v5 contracts remain unchanged.
+    return (cfg.get('production_profile') == DETAIL_PROFILE
+            and isinstance(cfg.get('user_verbatim_script'), str)
+            and bool(cfg['user_verbatim_script'].strip()))
+
+
+
+
+def is_longform(cfg):
+    """Select an explicit format; mismatches must never use the legacy renderer."""
+    media_format = cfg.get('format')
+    profile = cfg.get('production_profile')
+    if media_format == 'longform' or profile == LONGFORM_PROFILE:
+        if media_format != 'longform' or profile != LONGFORM_PROFILE:
+            raise ValueError('longform requires format=longform and production_profile=' + LONGFORM_PROFILE)
+        return True
+    if media_format not in (None, 'shorts'):
+        raise ValueError('Unsupported episode format: ' + str(media_format))
+    return False
+
+
+def video_spec(cfg):
+    lo, hi = duration_limits(cfg)
+    longform = is_longform(cfg)
+    return dict(width=1920 if longform else 1080,
+                height=1080 if longform else 1920,
+                fps=FPS, duration_min=lo, duration_max=hi)
 
 
 def validate_detail_options(cfg):
@@ -30,8 +63,13 @@ def validate_detail_options(cfg):
         return
     if cfg.get('cta_presentation') != 'comment_spoken':
         raise ValueError(DETAIL_PROFILE + ': cta_presentation must explicitly be comment_spoken')
+    verbatim = is_user_verbatim(cfg)
+    if 'user_verbatim_script' in cfg and not verbatim:
+        raise ValueError('user_verbatim_script must contain the complete approved script')
+    if verbatim and ('story_beats' not in cfg or 'narration_groups' not in cfg):
+        raise ValueError('user_verbatim_script requires explicit story_beats and narration_groups')
     for field in ('story_beats', 'clash', 'additional_edges', 'reaction_image'):
-        if field in cfg:
+        if field in cfg and not (verbatim and field == 'story_beats'):
             raise ValueError(DETAIL_PROFILE + ': ' + field + ' is not supported; keep the basic two exchanges')
     for who in ('a', 'b'):
         info = cfg.get(who)
@@ -66,7 +104,16 @@ def additional_edge_specs(cfg):
 
 
 def image_names(cfg):
+    if is_longform(cfg):
+        from longform_profile import require_longform_structure
+        require_longform_structure(cfg)
+        names = [cfg.get('thumb', 'thumb.png')]
+        names.extend(cfg[who].get('image', who + '.png') for who in ('a', 'b'))
+        names.extend(cut['image'] for cut in cfg['cuts'])
+        return tuple(dict.fromkeys(names))
     validate_detail_options(cfg)
+    if is_user_verbatim(cfg):
+        return USER_VERBATIM_IMAGE_NAMES
     if cfg.get('production_profile') in (SHOWDOWN_PROFILE, DETAIL_PROFILE):
         # Portrait references may also be the solo introduction shot. Require
         # every actual scene, but never unused legacy reaction/intro assets.
@@ -85,10 +132,25 @@ def image_names(cfg):
 
 def duration_limits(cfg):
     """Seconds, inclusive. Existing episode profiles retain their former limits."""
+    if is_longform(cfg):
+        return (540, 900)
+    if is_user_verbatim(cfg):
+        override = cfg.get('episode_specific_override', {})
+        if 'duration_limit_seconds' in override:
+            maximum = override['duration_limit_seconds']
+            if (type(maximum) is not int or not 60 <= maximum <= 180
+                    or not isinstance(override.get('duration_basis'), str)
+                    or not override['duration_basis'].strip()):
+                raise ValueError('A verbatim duration exception requires a 60..180 second limit and explicit user basis')
+            return (30, maximum)
     return (30, 60) if cfg.get('production_profile') in STRUCTURED_PROFILES else (20, 45)
 
 
 def narration_groups(cfg):
+    if is_longform(cfg):
+        from longform_profile import require_longform_structure
+        require_longform_structure(cfg)
+        return cfg['narration_groups']
     validate_detail_options(cfg)
     if 'narration_groups' in cfg:
         groups = cfg['narration_groups']
@@ -99,10 +161,11 @@ def narration_groups(cfg):
                     not isinstance(group, dict) or not isinstance(group.get('segment_ids'), list)
                     or not group['segment_ids'] for group in groups)):
                 raise ValueError(DETAIL_PROFILE + ': narration groups require nonempty segment_ids')
-            ids = [cue['id'] for cue in speech_segments(cfg)]
+            ids = [cue['id'] for cue in speech_segments(cfg)
+                   if not is_user_verbatim(cfg) or cue['id'] != 'cta']
             if [key for group in groups for key in group['segment_ids']] != ids:
                 raise ValueError(DETAIL_PROFILE + ': all cues must belong to continuous narration groups')
-            for who in ('a', 'b'):
+            for who in (() if is_user_verbatim(cfg) else ('a', 'b')):
                 if not any(f'{who}.intro.0' in group['segment_ids'] and
                            f'{who}.intro.1' in group['segment_ids'] for group in groups):
                     raise ValueError(DETAIL_PROFILE + ': ' + who +
@@ -169,6 +232,10 @@ def nfc(text):
 
 
 def speech_segments(cfg):
+    longform = is_longform(cfg)
+    if longform:
+        from longform_profile import require_longform_structure
+        require_longform_structure(cfg)
     validate_detail_options(cfg)
     # One owner for CTA. Import lazily so importing this utility has no media side effects.
     from make_vs import CTA_SAY, CTA_SHOW, CTA_COMMENT_SAY
@@ -176,6 +243,15 @@ def speech_segments(cfg):
     if mode not in ('spoken', 'overlay', 'comment_spoken'):
         raise ValueError('cta_presentation must be spoken, overlay or comment_spoken')
     def finish(result):
+        if is_user_verbatim(cfg):
+            # The user supplied the complete visible/spoken script, including
+            # the shared CTA. Do not add legacy subscription overlay wording.
+            for cue in result:
+                if cue['id'] == 'cta':
+                    cue.update(image=cfg['cliffhanger']['image'],
+                               spoken_text=CTA_COMMENT_SAY, display_text=CTA_COMMENT_SAY,
+                               caption_in_overlay=False)
+            return result
         if mode in ('overlay', 'comment_spoken'):
             if mode == 'overlay':
                 result = [s for s in result if s['id'] != 'cta']
@@ -194,7 +270,24 @@ def speech_segments(cfg):
         return dict(id=key, scene_id=key, kind=kind, image=image,
                     display_text=nfc(text), spoken_text=nfc(spoken if spoken is not None else text),
                     condition=condition)
-    if cfg.get('production_profile') in STRUCTURED_PROFILES:
+    if longform:
+        cuts = {cut['id']: cut for cut in cfg['cuts']}
+        result = []
+        for beat in cfg['story_beats']:
+            cut = cuts[beat['cut_id']]
+            result.append({**part(beat['id'], beat.get('kind', 'story'), cut['image'],
+                                 beat['display_text'], beat['spoken_text'], beat.get('condition')),
+                           'scene_id': beat['scene_id'], 'cut_id': cut['id'],
+                           'header': nfc(beat.get('header', '')),
+                           'transition': cut.get('transition', 'crossfade')})
+        last = result[-1]
+        result.append({**part('cta', 'cta', last['image'], CTA_SHOW[0], CTA_COMMENT_SAY),
+                       'scene_id': last['scene_id'], 'cut_id': last['cut_id'],
+                       'transition': 'hold', 'cta_overlay': '\n'.join(CTA_SHOW),
+                       'caption_in_overlay': True})
+        # Only the actual ending has CTA graphics; intermediate questions do not.
+        return result
+    if cfg.get('production_profile') in STRUCTURED_PROFILES and not is_user_verbatim(cfg):
         if 'story_beats' in cfg or 'cta' in cfg:
             raise ValueError('setup_story_v3 uses structured fields and one shared CTA')
         result = [part('hook', 'hook', cfg.get('thumb', 'thumb.png'), cfg['hook'])]
@@ -261,7 +354,14 @@ def speech_segments(cfg):
                                   beat['spoken_text'], beat.get('condition')),
                            'header': nfc(beat.get('header', ''))})
         result.append(part('cta', 'cta', None, '\n'.join(CTA_SHOW), spoken=CTA_SAY))
-        return finish(result)
+        result = finish(result)
+        if is_user_verbatim(cfg):
+            normalize = lambda text: ' '.join(nfc(text).split())
+            if normalize(' '.join(cue['spoken_text'] for cue in result)) != normalize(cfg['user_verbatim_script']):
+                raise ValueError('user_verbatim_script: spoken cues must preserve every approved word and its order')
+            if any(normalize(cue['display_text']) != normalize(cue['spoken_text']) for cue in result):
+                raise ValueError('user_verbatim_script: captions must preserve the approved spoken text')
+        return result
     result = [part('hook', 'hook', cfg.get('thumb', 'thumb.png'), cfg['hook'])]
     for who in ('a', 'b'):
         info = cfg[who]
