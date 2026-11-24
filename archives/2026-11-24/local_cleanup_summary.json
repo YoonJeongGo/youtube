@@ -1,0 +1,24 @@
+{
+  "completed": true,
+  "date": "2026-11-24",
+  "user_requested": true,
+  "github_repository": "YoonJeongGo/youtube",
+  "remote_archive_count": 83,
+  "remote_archive_bytes": 43286849854,
+  "deleted_files": 128383,
+  "deleted_logical_bytes": 141676341158,
+  "original_text_files_retained": 11071,
+  "private_metadata_zip_bytes": 49656537,
+  "private_metadata_zip_sha256": "ade1f85f8c3c844fbf950ce744ee2c44a977c4f970b29408a7fc9a79b3649d9a",
+  "preserved": [
+    "Production code and rules",
+    "Episode state and planning records",
+    "Private original text archive",
+    "GitHub catalog and restoration instructions",
+    "Codex application/chat history",
+    "C-path compatibility junctions",
+    "Other projects and shared system applications"
+  ],
+  "quality_status_upgraded": false,
+  "one_time_cleanup_only": true
+}

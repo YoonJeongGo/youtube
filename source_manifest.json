@@ -3,9 +3,10 @@
   "files": [
     {
       "path": "AGENTS.md",
-      "source_sha256": "282ad74e83e346ee5ae9fac5b3be4aa98f6547da97955032ca1bed2415bc5153",
-      "public_sha256": "282ad74e83e346ee5ae9fac5b3be4aa98f6547da97955032ca1bed2415bc5153",
-      "redacted": false
+      "source_sha256": "4b4fedb8147a145bba2f3cb61db056d6827e21bbb3d675fa05ef5106f34d741c",
+      "public_sha256": "4b4fedb8147a145bba2f3cb61db056d6827e21bbb3d675fa05ef5106f34d741c",
+      "redacted": false,
+      "post_cleanup_documentation": true
     },
     {
       "path": "analyze_audio.py",
@@ -45,9 +46,10 @@
     },
     {
       "path": "docs/decision_log.md",
-      "source_sha256": "b47215670959a86761c442ea968e90aef7ae986a3a34a5d2126ae45b06b9aa19",
-      "public_sha256": "b47215670959a86761c442ea968e90aef7ae986a3a34a5d2126ae45b06b9aa19",
-      "redacted": false
+      "source_sha256": "ae585e992f81b21264474e758b2eec04a95b37e133e6344d0cbf1227844eb09d",
+      "public_sha256": "ae585e992f81b21264474e758b2eec04a95b37e133e6344d0cbf1227844eb09d",
+      "redacted": false,
+      "post_cleanup_documentation": true
     },
     {
       "path": "docs/evidence/2026-11-16-thumbnail-name-clipping.json",
@@ -141,9 +143,10 @@
     },
     {
       "path": "docs/shared_system.md",
-      "source_sha256": "0f4c86b9c5b92688411bc356e4c8dee22b72a9ceac208532db4e33f38d267d84",
-      "public_sha256": "0f4c86b9c5b92688411bc356e4c8dee22b72a9ceac208532db4e33f38d267d84",
-      "redacted": false
+      "source_sha256": "eb63a1f6f039910c23636624b38705e4c962c1dae0fd0686fc205d24bb434bef",
+      "public_sha256": "eb63a1f6f039910c23636624b38705e4c962c1dae0fd0686fc205d24bb434bef",
+      "redacted": false,
+      "post_cleanup_documentation": true
     },
     {
       "path": "environment.ps1",
@@ -237,14 +240,15 @@
     },
     {
       "path": "README.md",
-      "source_sha256": "8f063aee904af634c7c0d9bc7ea49f1a0486038dc6fcf2f596d810aa93e7971f",
-      "public_sha256": "0a2fafd0ed54ffa7ad352f377a855dc6487b13a51a875ce852f3dbd36a085a0a",
+      "source_sha256": "31c57ef0e365eed0a78cce0e59be3f0d432b673e634e125dbd18844844245651",
+      "public_sha256": "7167f1fff699d1e73f4c30fee3044235cce39a408b91089adbd278160beb720f",
       "redacted": false,
       "added_public_navigation": true,
       "archived_planning_reference_redirected": true,
       "archived_reference_redirects": {
         "planning/matchup_plans_20261116.json": "archives/2026-11-24/README.md"
-      }
+      },
+      "post_cleanup_documentation": true
     },
     {
       "path": "release_checks.py",
@@ -461,8 +465,16 @@
       "source_sha256": "0c2e14ae7260490f515b53443c1e49b39aff78e6bedc7d76c9bb109ccc651cf3",
       "public_sha256": "9e0fc9338cc329472562e9886e7d4788b1a643c6240368f8605c7e467ee693c9",
       "redacted": true
+    },
+    {
+      "post_cleanup_documentation": true,
+      "public_sha256": "4eeaeaea3c63848ebb842a1443ebf09e59e3da53546424186774c621e0c5a6e0",
+      "source_sha256": "4eeaeaea3c63848ebb842a1443ebf09e59e3da53546424186774c621e0c5a6e0",
+      "redacted": false,
+      "path": "docs/archive_retention_20261124.md"
     }
   ],
-  "production_files_changed": false,
-  "verification": "Sanitized Python parsed; no production generation or quality review was performed."
+  "production_files_changed": true,
+  "verification": "Sanitized Python parsed; no production generation or quality review was performed.",
+  "change_scope": "Explicit post-cleanup documentation update; production code unchanged; local media removed only after verified backup."
 }

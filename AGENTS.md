@@ -1,3 +1,9 @@
+## 2026-11-24: GitHub 보관 후 로컬 제작 자료 정리 완료
+
+사용자 요청으로 숏폼 18편과 롱폼 2편의 영상·편집 원본·과거 수정 이력을 GitHub에 보관하고, 원격 파일 크기·SHA-256과 보존 기록을 확인한 뒤 로컬 미디어·백업 사본·프로젝트 전용 캐시·실행환경을 삭제했다. **현재 로컬에는 제작 미디어와 Python 가상환경이 없다.** 기존 상태 파일은 보관 당시의 이력이며, 파일 존재나 제작 재개 가능 상태를 뜻하지 않는다.
+
+제작 규칙·코드·기획·편별 상태와 원문 텍스트 보존본·복원 안내는 남겼다. 이어서 작업하기 전 `docs/archive_retention_20261124.md`를 읽고 필요한 GitHub 묶음과 실행환경부터 복원한다. 과거 검수 상태를 PASS로 바꾸거나 승인 없이 재제작하지 않는다. 이번 삭제는 사용자가 명시한 일회성 정리이며, 이후 결과물을 자동 삭제하는 규칙이 아니다.
+
 ## 2026-11-20 추가: 다음 롱폼의 노림·근접 공방
 
 [최신 사용자 원문](docs/requests/2026-11-20-longform-intent-close-combat-request.txt)을 다음 신규 롱폼의 실제 기획·대본·그림 검수에 적용한다. 상세는 [롱폼 공용 규칙](docs/longform_production_rules.md)의 최신 추가 절과 [전투 컷 연출](docs/longform_combat_direction.md), 실행은 [기획 프롬프트](docs/longform_planning_prompt.md)·[검수표](docs/longform_script_review.md)를 따른다.

@@ -1099,5 +1099,6 @@
         }
       ]
     }
-  ]
+  ],
+  "local_media_removed_after_verified_backup": true
 }
